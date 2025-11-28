@@ -52,13 +52,13 @@ A complete location spoofing solution featuring a UIKit dashboard app and system
 1. Open **Sileo** on your jailbroken iPhone
 2. Go to **Sources** tab
 3. Tap **+** to add a new source
-4. Enter: `https://thomasrocks006-cmyk.github.io/Ghost-walker/repo/`
+4. Enter: `https://raw.githubusercontent.com/thomasrocks006-cmyk/Ghost-walker/main/repo/`
 5. Find **Ghost Walker** and tap **Install**
 6. Respring when prompted
 
 ### Method 2: Direct .deb Install
 
-1. Download `com.ghostwalker.app_1.0.0_iphoneos-arm64.deb` from this repo
+1. Download `com.ghostwalker.app_2.0.0_iphoneos-arm64.deb` from the `repo/debs/` folder
 2. Transfer to your iPhone using AirDrop, iCloud, or SSH
 3. Open with **Filza File Manager**
 4. Tap the `.deb` file and select **Install**
