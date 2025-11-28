@@ -1,0 +1,32 @@
+name: Local Machine Commands
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to run on local machine'
+        required: true
+        type: string
+      working_directory:
+        description: 'Working directory (optional)'
+        required: false
+        default: '.'
+        type: string
+
+jobs:
+  run-on-local:
+    runs-on: self-hosted
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Run command
+        shell: powershell
+        working-directory: ${{ github.event.inputs.working_directory }}
+        run: |
+          Write-Host "Running command on local Windows machine..."
+          Write-Host "Command: ${{ github.event.inputs.command }}"
+          Write-Host "Working Directory: ${{ github.event.inputs.working_directory }}"
+          Write-Host "----------------------------------------"
+          ${{ github.event.inputs.command }}

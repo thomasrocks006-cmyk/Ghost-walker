@@ -1,0 +1,56 @@
+name: Build GhostWalker on Local Mac
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'What to build'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - tweak
+          - app
+          - package
+
+jobs:
+  build:
+    runs-on: self-hosted
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Check Theos installation
+        shell: powershell
+        run: |
+          Write-Host "Checking development environment..."
+          if (Test-Path env:THEOS) {
+            Write-Host "THEOS is set to: $env:THEOS"
+          } else {
+            Write-Host "WARNING: THEOS environment variable not set"
+          }
+      
+      - name: Build Project
+        shell: powershell
+        run: |
+          cd GhostWalker
+          Write-Host "Building GhostWalker..."
+          
+          if ("${{ github.event.inputs.build_type }}" -eq "all" -or "${{ github.event.inputs.build_type }}" -eq "tweak") {
+            Write-Host "Building Tweak..."
+            # make -C Tweak
+          }
+          
+          if ("${{ github.event.inputs.build_type }}" -eq "all" -or "${{ github.event.inputs.build_type }}" -eq "app") {
+            Write-Host "Building App..."
+            # make -C App
+          }
+          
+          if ("${{ github.event.inputs.build_type }}" -eq "all" -or "${{ github.event.inputs.build_type }}" -eq "package") {
+            Write-Host "Building Package..."
+            # make package
+          }
+          
+          Write-Host "Build complete!"
