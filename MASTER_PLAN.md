@@ -14,10 +14,16 @@
 | Tweak (Logos) | ✅ Built | 2.0.0 |
 | .deb Package | ✅ Ready | 2.0.0 |
 | Sileo Repo | ✅ Updated | Live |
+| Device Install | ✅ Installed | Testing |
+| Map Loading | ⚠️ Issue | Debugging |
 
 **Repo URL:** `https://raw.githubusercontent.com/thomasrocks006-cmyk/Ghost-walker/main/repo/`
 
 **Direct .deb:** `repo/debs/com.ghostwalker.app_2.0.0_iphoneos-arm64.deb`
+
+**Debug Docs:**
+- `DEVICE_TESTING.md` - Installation diagnostics
+- `SOURCE_CODE_FIX.md` - Map loading fix & source code
 
 ---
 
