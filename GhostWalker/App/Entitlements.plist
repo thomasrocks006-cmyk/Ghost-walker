@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Platform application - run without sandbox -->
+	<key>platform-application</key>
+	<true/>
+	
+	<!-- Allow unrestricted file access -->
+	<key>com.apple.private.security.no-sandbox</key>
+	<true/>
+	
+	<!-- File system access -->
+	<key>com.apple.private.security.storage.AppDataContainers</key>
+	<true/>
+	
+	<!-- Location services -->
+	<key>com.apple.locationd.authorizealiases</key>
+	<true/>
+	<key>com.apple.locationd.preauthorized</key>
+	<true/>
+	
+	<!-- Background execution -->
+	<key>com.apple.multitasking.unlimitedassertions</key>
+	<true/>
+	
+	<!-- Inter-process communication -->
+	<key>com.apple.private.xpc.launchd.per-user-lookup</key>
+	<true/>
+	
+	<!-- Run as mobile user -->
+	<key>run-unsigned-code</key>
+	<true/>
+	
+	<!-- Keychain access group -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>com.ghostwalker.app</string>
+	</array>
+	
+	<!-- Application identifier -->
+	<key>application-identifier</key>
+	<string>com.ghostwalker.app</string>
+	
+	<!-- Get task allow (for debugging) -->
+	<key>get-task-allow</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,21 @@
+# Theos build artifacts
+.theos/
+packages/
+
+# Build outputs
+output/
+*.deb
+!repo/debs/*.deb
+
+# macOS
+.DS_Store
+
+# IDE
+*.xcworkspace
+*.xcuserdata
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.log

@@ -1,0 +1,9 @@
+Package: com.ghostwalker.app
+Name: Ghost Walker
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: Location spoofing suite with SwiftUI dashboard and system hook. Walk virtually anywhere with realistic GPS simulation including drift, jitter, and accuracy pulsing.
+Maintainer: Ghost Walker Dev
+Author: Ghost Walker Dev
+Section: Tweaks
+Depends: firmware (>= 15.0), mobilesubstrate
