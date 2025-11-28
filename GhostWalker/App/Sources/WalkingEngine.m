@@ -2,23 +2,47 @@
 //  WalkingEngine.m
 //  Ghost Walker
 //
-//  Core walking simulation with OSRM routing and human-like movement
+//  Core location simulation with static hold, walking, driving modes
+//  Features: background persistence, rubber-band failsafe, configurable accuracy
 //
 
 #import "WalkingEngine.h"
 
 static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwalker.live.json";
+static NSString *const kPersistPath = @"/var/mobile/Library/Preferences/com.ghostwalker.persist.json";
 
 @interface WalkingEngine ()
 
-@property (nonatomic, assign) BOOL isWalking;
+// State
+@property (nonatomic, assign) BOOL isActive;
+@property (nonatomic, assign) BOOL isMoving;
+@property (nonatomic, assign) GhostSpoofStatus status;
+
 @property (nonatomic, strong) NSMutableArray<CLLocation *> *currentRoute;
 @property (nonatomic, strong) NSMutableArray<CLLocation *> *walkedPath;
 
-@property (nonatomic, strong) NSTimer *walkingTimer;
+// Timers
+@property (nonatomic, strong) NSTimer *updateTimer;
+@property (nonatomic, strong) NSTimer *accuracyTimer;  // Separate timer for accuracy updates
+
+// Route state
 @property (nonatomic, assign) NSUInteger routeIndex;
 @property (nonatomic, assign) double segmentProgress;
-@property (nonatomic, assign) double pulsePhase;
+
+// Accuracy state
+@property (nonatomic, assign) double currentAccuracy;
+@property (nonatomic, assign) NSTimeInterval lastAccuracyChange;
+
+// Failsafe state
+@property (nonatomic, assign) CLLocationCoordinate2D lastKnownGoodLocation;
+@property (nonatomic, assign) double lastKnownGoodAccuracy;
+
+// Verification
+@property (nonatomic, strong) NSDate *spoofStartTime;
+@property (nonatomic, assign) NSUInteger updateCount;
+
+// Persistence
+@property (nonatomic, assign) BOOL persistentModeEnabled;
 
 @end
 
@@ -29,23 +53,129 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _isWalking = NO;
-        _walkingSpeed = 1.4;
-        _driftAmount = 3.0;
+        // State
+        _isActive = NO;
+        _isMoving = NO;
+        _status = GhostSpoofStatusIdle;
+        _movementMode = GhostMovementModeWalking;
+        
+        // Speed
+        _walkingSpeed = 1.4;       // Normal walking pace
+        _drivingSpeed = 13.9;      // ~50 km/h
+        
+        // Accuracy (FindMy-like defaults)
         _accuracyMin = 10.0;
         _accuracyMax = 45.0;
+        _accuracyUpdateInterval = 10.0;  // Change circle every 10 seconds
+        _currentAccuracy = 25.0;
+        
+        // Drift
+        _driftMin = 2.0;
+        _driftMax = 5.0;
+        
+        // Update interval
+        _updateInterval = 1.0;     // Update every second for live look
+        
+        // Failsafe
+        _maxJumpDistance = 100.0;  // 100m max jump before failsafe
+        _failsafeTriggered = NO;
+        
+        // Route
         _routeIndex = 0;
         _segmentProgress = 0;
-        _pulsePhase = 0;
-        _destination = CLLocationCoordinate2DMake(0, 0);
-        _currentSpoofedLocation = CLLocationCoordinate2DMake(0, 0);
         _currentRoute = [NSMutableArray array];
         _walkedPath = [NSMutableArray array];
+        
+        // Locations
+        _destination = CLLocationCoordinate2DMake(0, 0);
+        _currentSpoofedLocation = CLLocationCoordinate2DMake(0, 0);
+        _staticHoldLocation = CLLocationCoordinate2DMake(0, 0);
+        _lastKnownGoodLocation = CLLocationCoordinate2DMake(0, 0);
+        
+        // Verification
+        _updateCount = 0;
+        
+        // Persistence
+        _persistentModeEnabled = YES;  // On by default
+        
+        // Check for persistent state on init
+        [self loadPersistentState];
+        
+        // Register for app lifecycle notifications
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(appWillResignActive)
+                                                     name:UIApplicationWillResignActiveNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(appDidBecomeActive)
+                                                     name:UIApplicationDidBecomeActiveNotification
+                                                   object:nil];
     }
     return self;
 }
 
-#pragma mark - Public Methods
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self.updateTimer invalidate];
+    [self.accuracyTimer invalidate];
+}
+
+#pragma mark - Legacy Compatibility
+
+- (BOOL)isWalking {
+    return self.isMoving;
+}
+
+- (void)setIsWalking:(BOOL)isWalking {
+    self.isMoving = isWalking;
+}
+
+- (double)driftAmount {
+    return self.driftMax;
+}
+
+- (void)setDriftAmount:(double)driftAmount {
+    self.driftMax = driftAmount;
+}
+
+- (void)startWalkingFrom:(CLLocationCoordinate2D)start {
+    self.movementMode = GhostMovementModeWalking;
+    [self startMovingFrom:start];
+}
+
+- (void)stopWalking {
+    [self pauseMovement];
+}
+
+#pragma mark - Static Mode
+
+- (void)startStaticSpoofAtLocation:(CLLocationCoordinate2D)location {
+    NSLog(@"[GhostWalker] Starting STATIC spoof at: %f, %f", location.latitude, location.longitude);
+    
+    self.staticHoldLocation = location;
+    self.currentSpoofedLocation = location;
+    self.lastKnownGoodLocation = location;
+    self.isActive = YES;
+    self.isMoving = NO;
+    self.status = GhostSpoofStatusActive;
+    self.failsafeTriggered = NO;
+    self.spoofStartTime = [NSDate date];
+    self.updateCount = 0;
+    
+    // Start update timer for continuous location updates
+    [self startUpdateTimer];
+    [self startAccuracyTimer];
+    
+    // Save persistent state
+    [self savePersistentState];
+    
+    // Notify delegate
+    if ([self.delegate respondsToSelector:@selector(walkingEngineStatusDidChange:)]) {
+        [self.delegate walkingEngineStatusDidChange:self];
+    }
+}
+
+#pragma mark - Route Mode
 
 - (void)setDestination:(CLLocationCoordinate2D)coordinate {
     _destination = coordinate;
@@ -54,64 +184,204 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
     self.segmentProgress = 0;
 }
 
-- (void)startWalkingFrom:(CLLocationCoordinate2D)start {
+- (void)startMovingFrom:(CLLocationCoordinate2D)start {
     if (self.destination.latitude == 0 && self.destination.longitude == 0) {
         return;
     }
     
-    self.isWalking = YES;
+    NSLog(@"[GhostWalker] Starting ROUTE mode from: %f, %f to: %f, %f", 
+          start.latitude, start.longitude, 
+          self.destination.latitude, self.destination.longitude);
+    
+    self.isActive = YES;
+    self.isMoving = YES;
+    self.status = GhostSpoofStatusMoving;
     self.currentSpoofedLocation = start;
+    self.lastKnownGoodLocation = start;
+    self.failsafeTriggered = NO;
+    self.spoofStartTime = [NSDate date];
+    self.updateCount = 0;
+    
     [self.walkedPath removeAllObjects];
     [self.walkedPath addObject:[[CLLocation alloc] initWithLatitude:start.latitude longitude:start.longitude]];
     
     // Fetch route from OSRM
-    [self fetchRouteFrom:start to:self.destination completion:^(NSArray<CLLocation *> *route) {
+    NSString *profile = (self.movementMode == GhostMovementModeDriving) ? @"car" : @"foot";
+    [self fetchRouteFrom:start to:self.destination profile:profile completion:^(NSArray<CLLocation *> *route) {
         if (route) {
             [self.currentRoute removeAllObjects];
             [self.currentRoute addObjectsFromArray:route];
             self.routeIndex = 0;
             self.segmentProgress = 0;
-            [self startWalkingTimer];
+            [self startUpdateTimer];
+            [self startAccuracyTimer];
+            [self savePersistentState];
         }
     }];
+    
+    // Notify delegate
+    if ([self.delegate respondsToSelector:@selector(walkingEngineStatusDidChange:)]) {
+        [self.delegate walkingEngineStatusDidChange:self];
+    }
 }
 
-- (void)stopWalking {
-    self.isWalking = NO;
-    [self.walkingTimer invalidate];
-    self.walkingTimer = nil;
+- (void)pauseMovement {
+    NSLog(@"[GhostWalker] Pausing movement, holding current position");
+    self.isMoving = NO;
+    
+    // Keep static spoofing at current location
+    if (self.currentSpoofedLocation.latitude != 0) {
+        self.staticHoldLocation = self.currentSpoofedLocation;
+        self.status = GhostSpoofStatusActive;
+    }
+    
+    [self savePersistentState];
+    
+    if ([self.delegate respondsToSelector:@selector(walkingEngineStatusDidChange:)]) {
+        [self.delegate walkingEngineStatusDidChange:self];
+    }
+}
+
+- (void)resumeMovement {
+    if (self.currentRoute.count > 0 && self.routeIndex < self.currentRoute.count) {
+        NSLog(@"[GhostWalker] Resuming movement");
+        self.isMoving = YES;
+        self.status = GhostSpoofStatusMoving;
+        
+        if ([self.delegate respondsToSelector:@selector(walkingEngineStatusDidChange:)]) {
+            [self.delegate walkingEngineStatusDidChange:self];
+        }
+    }
+}
+
+- (void)stopAllSpoofing {
+    NSLog(@"[GhostWalker] Stopping ALL spoofing, returning to real location");
+    
+    [self.updateTimer invalidate];
+    self.updateTimer = nil;
+    [self.accuracyTimer invalidate];
+    self.accuracyTimer = nil;
+    
+    self.isActive = NO;
+    self.isMoving = NO;
+    self.status = GhostSpoofStatusIdle;
+    self.failsafeTriggered = NO;
+    
+    // Clear the JSON file so tweak returns real location
     [self clearJSONFile];
+    [self clearPersistentState];
+    
+    if ([self.delegate respondsToSelector:@selector(walkingEngineStatusDidChange:)]) {
+        [self.delegate walkingEngineStatusDidChange:self];
+    }
 }
 
 - (void)resetAll {
-    [self stopWalking];
+    [self stopAllSpoofing];
     self.destination = CLLocationCoordinate2DMake(0, 0);
     self.currentSpoofedLocation = CLLocationCoordinate2DMake(0, 0);
+    self.staticHoldLocation = CLLocationCoordinate2DMake(0, 0);
     [self.currentRoute removeAllObjects];
     [self.walkedPath removeAllObjects];
     self.remainingDistance = 0;
+    self.updateCount = 0;
 }
 
-#pragma mark - Timer
+#pragma mark - Timers
 
-- (void)startWalkingTimer {
-    [self.walkingTimer invalidate];
+- (void)startUpdateTimer {
+    [self.updateTimer invalidate];
     
-    self.walkingTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
-                                                         target:self
-                                                       selector:@selector(updatePosition)
-                                                       userInfo:nil
-                                                        repeats:YES];
-    
-    // Immediate first update
-    [self updatePosition];
-}
-
-- (void)updatePosition {
-    if (!self.isWalking || self.currentRoute.count == 0) {
-        return;
+    // Use faster interval for driving mode
+    double interval = self.updateInterval;
+    if (self.movementMode == GhostMovementModeDriving && self.isMoving) {
+        interval = 0.5;  // Update every 0.5 seconds for smooth driving
     }
     
+    self.updateTimer = [NSTimer scheduledTimerWithTimeInterval:interval
+                                                        target:self
+                                                      selector:@selector(performUpdate)
+                                                      userInfo:nil
+                                                       repeats:YES];
+    
+    // Immediate first update
+    [self performUpdate];
+}
+
+- (void)startAccuracyTimer {
+    [self.accuracyTimer invalidate];
+    
+    // Change accuracy every N seconds (default 10)
+    self.accuracyTimer = [NSTimer scheduledTimerWithTimeInterval:self.accuracyUpdateInterval
+                                                          target:self
+                                                        selector:@selector(updateAccuracy)
+                                                        userInfo:nil
+                                                         repeats:YES];
+    
+    // Set initial accuracy
+    [self updateAccuracy];
+}
+
+- (void)updateAccuracy {
+    // Random accuracy within user-defined range
+    double range = self.accuracyMax - self.accuracyMin;
+    self.currentAccuracy = self.accuracyMin + (((double)arc4random() / UINT32_MAX) * range);
+    self.lastAccuracyChange = [[NSDate date] timeIntervalSince1970];
+    
+    NSLog(@"[GhostWalker] Accuracy updated to: %.1f meters", self.currentAccuracy);
+}
+
+#pragma mark - Update Loop
+
+- (void)performUpdate {
+    if (!self.isActive) return;
+    
+    self.updateCount++;
+    
+    if (self.isMoving && self.currentRoute.count > 0) {
+        [self updateRoutePosition];
+    } else if (self.staticHoldLocation.latitude != 0 || self.currentSpoofedLocation.latitude != 0) {
+        [self updateStaticPosition];
+    }
+}
+
+- (void)updateStaticPosition {
+    // Get base location (either static hold or current spoofed)
+    CLLocationCoordinate2D baseLocation = self.staticHoldLocation;
+    if (baseLocation.latitude == 0) {
+        baseLocation = self.currentSpoofedLocation;
+    }
+    
+    // Apply random drift for realistic look
+    double driftLat, driftLon;
+    [self calculateDriftLat:&driftLat lon:&driftLon];
+    
+    double newLat = baseLocation.latitude + driftLat;
+    double newLon = baseLocation.longitude + driftLon;
+    
+    // Failsafe check - detect rubber banding
+    if ([self checkForRubberBand:CLLocationCoordinate2DMake(newLat, newLon)]) {
+        return;  // Failsafe triggered, using last known good location
+    }
+    
+    self.currentSpoofedLocation = CLLocationCoordinate2DMake(newLat, newLon);
+    self.lastKnownGoodLocation = self.currentSpoofedLocation;
+    
+    // Write to JSON
+    [self writeLocationToJSON:newLat
+                          lon:newLon
+                          alt:0
+                     accuracy:self.currentAccuracy
+                       course:-1
+                        speed:0];
+    
+    // Notify delegate
+    if ([self.delegate respondsToSelector:@selector(walkingEngineDidUpdateLocation:)]) {
+        [self.delegate walkingEngineDidUpdateLocation:self];
+    }
+}
+
+- (void)updateRoutePosition {
     if (self.routeIndex >= self.currentRoute.count - 1) {
         [self arriveAtDestination];
         return;
@@ -120,9 +390,13 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
     CLLocation *from = self.currentRoute[self.routeIndex];
     CLLocation *to = self.currentRoute[self.routeIndex + 1];
     
+    // Get current speed based on mode
+    double currentSpeed = (self.movementMode == GhostMovementModeDriving) ? self.drivingSpeed : self.walkingSpeed;
+    
     // Calculate distance to travel this tick
+    double tickInterval = (self.movementMode == GhostMovementModeDriving) ? 0.5 : self.updateInterval;
     double segmentDistance = [from distanceFromLocation:to];
-    double distanceToTravel = self.walkingSpeed; // meters per second
+    double distanceToTravel = currentSpeed * tickInterval;
     
     // Calculate segment progress
     double segmentProgress = distanceToTravel / MAX(segmentDistance, 0.1);
@@ -147,32 +421,40 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
     double newLat = from.coordinate.latitude + (to.coordinate.latitude - from.coordinate.latitude) * progress;
     double newLon = from.coordinate.longitude + (to.coordinate.longitude - from.coordinate.longitude) * progress;
     
-    // Apply human-like drift (Brownian motion)
+    // Apply drift (less for driving)
     double driftLat, driftLon;
     [self calculateDriftLat:&driftLat lon:&driftLon];
+    if (self.movementMode == GhostMovementModeDriving) {
+        driftLat *= 0.3;  // Less drift when driving
+        driftLon *= 0.3;
+    }
     newLat += driftLat;
     newLon += driftLon;
     
-    // Calculate bearing (course)
-    double bearing = [self bearingFrom:from.coordinate to:to.coordinate];
+    // Failsafe check
+    if ([self checkForRubberBand:CLLocationCoordinate2DMake(newLat, newLon)]) {
+        return;
+    }
     
-    // Calculate pulsing accuracy
-    double accuracy = [self calculatePulsingAccuracy];
+    // Calculate bearing
+    double bearing = [self bearingFrom:from.coordinate to:to.coordinate];
     
     // Update state
     self.currentSpoofedLocation = CLLocationCoordinate2DMake(newLat, newLon);
+    self.lastKnownGoodLocation = self.currentSpoofedLocation;
+    self.lastKnownGoodAccuracy = self.currentAccuracy;
     [self.walkedPath addObject:[[CLLocation alloc] initWithLatitude:newLat longitude:newLon]];
     
     // Calculate remaining distance
     self.remainingDistance = [self calculateRemainingDistance];
     
-    // Write to JSON file
-    [self writeLocationToJSON:newLat 
-                          lon:newLon 
-                          alt:0 
-                     accuracy:accuracy 
-                       course:bearing 
-                        speed:self.walkingSpeed];
+    // Write to JSON
+    [self writeLocationToJSON:newLat
+                          lon:newLon
+                          alt:0
+                     accuracy:self.currentAccuracy
+                       course:bearing
+                        speed:currentSpeed];
     
     // Notify delegate
     if ([self.delegate respondsToSelector:@selector(walkingEngineDidUpdateLocation:)]) {
@@ -181,50 +463,94 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
 }
 
 - (void)arriveAtDestination {
-    self.isWalking = NO;
-    [self.walkingTimer invalidate];
-    self.walkingTimer = nil;
+    NSLog(@"[GhostWalker] Arrived at destination, switching to static hold");
+    
+    self.isMoving = NO;
     self.remainingDistance = 0;
     
-    // Keep spoofing at destination but stopped
-    [self writeLocationToJSON:self.destination.latitude 
-                          lon:self.destination.longitude 
-                          alt:0 
-                     accuracy:self.accuracyMin 
-                       course:-1 
+    // Switch to static mode at destination
+    self.staticHoldLocation = self.destination;
+    self.currentSpoofedLocation = self.destination;
+    self.status = GhostSpoofStatusActive;
+    
+    // Keep spoofing at destination
+    [self writeLocationToJSON:self.destination.latitude
+                          lon:self.destination.longitude
+                          alt:0
+                     accuracy:self.currentAccuracy
+                       course:-1
                         speed:0];
+    
+    [self savePersistentState];
     
     if ([self.delegate respondsToSelector:@selector(walkingEngineDidFinish:)]) {
         [self.delegate walkingEngineDidFinish:self];
     }
+    if ([self.delegate respondsToSelector:@selector(walkingEngineStatusDidChange:)]) {
+        [self.delegate walkingEngineStatusDidChange:self];
+    }
 }
 
-#pragma mark - Human Simulation
+#pragma mark - Failsafe
+
+- (BOOL)checkForRubberBand:(CLLocationCoordinate2D)newLocation {
+    if (self.lastKnownGoodLocation.latitude == 0) {
+        return NO;  // No previous location to compare
+    }
+    
+    CLLocation *lastGood = [[CLLocation alloc] initWithLatitude:self.lastKnownGoodLocation.latitude
+                                                      longitude:self.lastKnownGoodLocation.longitude];
+    CLLocation *newLoc = [[CLLocation alloc] initWithLatitude:newLocation.latitude
+                                                    longitude:newLocation.longitude];
+    
+    double distance = [lastGood distanceFromLocation:newLoc];
+    
+    // For route mode, allow larger jumps based on speed
+    double maxAllowed = self.maxJumpDistance;
+    if (self.isMoving) {
+        double speed = (self.movementMode == GhostMovementModeDriving) ? self.drivingSpeed : self.walkingSpeed;
+        maxAllowed = MAX(self.maxJumpDistance, speed * 5);  // 5 seconds of movement
+    }
+    
+    if (distance > maxAllowed) {
+        NSLog(@"[GhostWalker] ⚠️ RUBBER BAND DETECTED! Jump of %.1f meters (max: %.1f)", distance, maxAllowed);
+        
+        self.failsafeTriggered = YES;
+        self.status = GhostSpoofStatusError;
+        
+        // Freeze at last known good location
+        [self writeLocationToJSON:self.lastKnownGoodLocation.latitude
+                              lon:self.lastKnownGoodLocation.longitude
+                              alt:0
+                         accuracy:self.lastKnownGoodAccuracy
+                           course:-1
+                            speed:0];
+        
+        if ([self.delegate respondsToSelector:@selector(walkingEngineDidDetectRubberBand:)]) {
+            [self.delegate walkingEngineDidDetectRubberBand:self];
+        }
+        
+        return YES;
+    }
+    
+    return NO;
+}
+
+#pragma mark - Drift Calculation
 
 - (void)calculateDriftLat:(double *)driftLat lon:(double *)driftLon {
     // Convert meters to degrees (approximate)
     double metersPerDegree = 111000.0;
-    double driftDegrees = self.driftAmount / metersPerDegree;
     
-    // Random walk (Brownian motion)
+    // Random drift within range
+    double driftAmount = self.driftMin + (((double)arc4random() / UINT32_MAX) * (self.driftMax - self.driftMin));
+    double driftDegrees = driftAmount / metersPerDegree;
+    
+    // Random direction
     double angle = ((double)arc4random() / UINT32_MAX) * 2 * M_PI;
-    double magnitude = ((double)arc4random() / UINT32_MAX) * driftDegrees;
     
-    *driftLat = magnitude * cos(angle);
-    *driftLon = magnitude * sin(angle);
-}
-
-- (double)calculatePulsingAccuracy {
-    self.pulsePhase += 0.2;
-    
-    // Sine wave oscillation
-    double range = self.accuracyMax - self.accuracyMin;
-    double accuracy = self.accuracyMin + (range / 2) + (range / 2) * sin(self.pulsePhase);
-    
-    // Add small random variation
-    double noise = (((double)arc4random() / UINT32_MAX) * 4) - 2; // -2 to +2
-    
-    return MAX(self.accuracyMin, MIN(self.accuracyMax, accuracy + noise));
+    *driftLat = driftDegrees * cos(angle);
+    *driftLon = driftDegrees * sin(angle);
 }
 
 - (double)bearingFrom:(CLLocationCoordinate2D)from to:(CLLocationCoordinate2D)to {
@@ -236,9 +562,7 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
     double x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon);
     
     double bearing = atan2(y, x) * 180 / M_PI;
-    bearing = fmod(bearing + 360, 360);
-    
-    return bearing;
+    return fmod(bearing + 360, 360);
 }
 
 - (double)calculateRemainingDistance {
@@ -248,7 +572,6 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
     
     double total = 0;
     
-    // Current segment remaining
     if (self.routeIndex < self.currentRoute.count - 1) {
         CLLocation *from = self.currentRoute[self.routeIndex];
         CLLocation *to = self.currentRoute[self.routeIndex + 1];
@@ -256,7 +579,6 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
         total += segmentDist * (1 - self.segmentProgress);
     }
     
-    // Future segments
     for (NSUInteger i = self.routeIndex + 1; i < self.currentRoute.count - 1; i++) {
         CLLocation *from = self.currentRoute[i];
         CLLocation *to = self.currentRoute[i + 1];
@@ -268,14 +590,13 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
 
 #pragma mark - OSRM Routing
 
-- (void)fetchRouteFrom:(CLLocationCoordinate2D)start to:(CLLocationCoordinate2D)end completion:(void (^)(NSArray<CLLocation *> *))completion {
+- (void)fetchRouteFrom:(CLLocationCoordinate2D)start to:(CLLocationCoordinate2D)end profile:(NSString *)profile completion:(void (^)(NSArray<CLLocation *> *))completion {
     NSString *urlString = [NSString stringWithFormat:
-        @"https://router.project-osrm.org/route/v1/foot/%f,%f;%f,%f?overview=full&geometries=geojson&steps=true",
-        start.longitude, start.latitude, end.longitude, end.latitude];
+        @"https://router.project-osrm.org/route/v1/%@/%f,%f;%f,%f?overview=full&geometries=geojson&steps=true",
+        profile, start.longitude, start.latitude, end.longitude, end.latitude];
     
     NSURL *url = [NSURL URLWithString:urlString];
     if (!url) {
-        NSLog(@"[WalkingEngine] Invalid URL");
         completion(@[
             [[CLLocation alloc] initWithLatitude:start.latitude longitude:start.longitude],
             [[CLLocation alloc] initWithLatitude:end.latitude longitude:end.longitude]
@@ -285,7 +606,6 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
     
     NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (error) {
-            NSLog(@"[WalkingEngine] Route fetch error: %@", error.localizedDescription);
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(@[
                     [[CLLocation alloc] initWithLatitude:start.latitude longitude:start.longitude],
@@ -348,33 +668,132 @@ static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwa
         @"verticalAccuracy": @(accuracy),
         @"course": @(course),
         @"speed": @(speed),
-        @"timestamp": @([[NSDate date] timeIntervalSince1970])
+        @"timestamp": @([[NSDate date] timeIntervalSince1970]),
+        @"updateCount": @(self.updateCount),
+        @"mode": @(self.movementMode),
+        @"isMoving": @(self.isMoving)
     };
     
     NSError *error;
     NSData *jsonData = [NSJSONSerialization dataWithJSONObject:locationData options:0 error:&error];
+    if (error) return;
     
-    if (error) {
-        NSLog(@"[GhostWalker] JSON serialization error: %@", error.localizedDescription);
-        return;
-    }
-    
-    // Ensure directory exists
     NSString *directory = [kJSONPath stringByDeletingLastPathComponent];
-    [[NSFileManager defaultManager] createDirectoryAtPath:directory 
-                              withIntermediateDirectories:YES 
-                                               attributes:nil 
+    [[NSFileManager defaultManager] createDirectoryAtPath:directory
+                              withIntermediateDirectories:YES
+                                               attributes:nil
                                                     error:nil];
     
-    // Write atomically
     [jsonData writeToFile:kJSONPath atomically:YES];
-    
-    NSLog(@"[GhostWalker] Wrote location: %f, %f", lat, lon);
 }
 
 - (void)clearJSONFile {
     [[NSFileManager defaultManager] removeItemAtPath:kJSONPath error:nil];
-    NSLog(@"[GhostWalker] Cleared spoofed location");
+}
+
+#pragma mark - Persistence (Background Survival)
+
+- (void)enablePersistentMode:(BOOL)enabled {
+    self.persistentModeEnabled = enabled;
+    if (enabled && self.isActive) {
+        [self savePersistentState];
+    } else if (!enabled) {
+        [self clearPersistentState];
+    }
+}
+
+- (void)savePersistentState {
+    if (!self.persistentModeEnabled || !self.isActive) return;
+    
+    NSDictionary *state = @{
+        @"isActive": @(self.isActive),
+        @"isMoving": @(self.isMoving),
+        @"movementMode": @(self.movementMode),
+        @"staticLat": @(self.staticHoldLocation.latitude),
+        @"staticLon": @(self.staticHoldLocation.longitude),
+        @"currentLat": @(self.currentSpoofedLocation.latitude),
+        @"currentLon": @(self.currentSpoofedLocation.longitude),
+        @"destLat": @(self.destination.latitude),
+        @"destLon": @(self.destination.longitude),
+        @"accuracyMin": @(self.accuracyMin),
+        @"accuracyMax": @(self.accuracyMax),
+        @"driftMin": @(self.driftMin),
+        @"driftMax": @(self.driftMax),
+        @"walkingSpeed": @(self.walkingSpeed),
+        @"drivingSpeed": @(self.drivingSpeed),
+        @"savedAt": @([[NSDate date] timeIntervalSince1970])
+    };
+    
+    NSData *data = [NSJSONSerialization dataWithJSONObject:state options:0 error:nil];
+    [data writeToFile:kPersistPath atomically:YES];
+    
+    NSLog(@"[GhostWalker] Saved persistent state");
+}
+
+- (void)loadPersistentState {
+    if (![[NSFileManager defaultManager] fileExistsAtPath:kPersistPath]) return;
+    
+    NSData *data = [NSData dataWithContentsOfFile:kPersistPath];
+    if (!data) return;
+    
+    NSDictionary *state = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (!state) return;
+    
+    // Check if state is recent (within last hour)
+    NSTimeInterval savedAt = [state[@"savedAt"] doubleValue];
+    if ([[NSDate date] timeIntervalSince1970] - savedAt > 3600) {
+        NSLog(@"[GhostWalker] Persistent state too old, ignoring");
+        [self clearPersistentState];
+        return;
+    }
+    
+    NSLog(@"[GhostWalker] Restoring persistent state...");
+    
+    self.movementMode = [state[@"movementMode"] integerValue];
+    self.accuracyMin = [state[@"accuracyMin"] doubleValue];
+    self.accuracyMax = [state[@"accuracyMax"] doubleValue];
+    self.driftMin = [state[@"driftMin"] doubleValue];
+    self.driftMax = [state[@"driftMax"] doubleValue];
+    self.walkingSpeed = [state[@"walkingSpeed"] doubleValue];
+    self.drivingSpeed = [state[@"drivingSpeed"] doubleValue];
+    
+    double staticLat = [state[@"staticLat"] doubleValue];
+    double staticLon = [state[@"staticLon"] doubleValue];
+    double currentLat = [state[@"currentLat"] doubleValue];
+    double currentLon = [state[@"currentLon"] doubleValue];
+    
+    if (staticLat != 0 || currentLat != 0) {
+        CLLocationCoordinate2D resumeLocation;
+        if (staticLat != 0) {
+            resumeLocation = CLLocationCoordinate2DMake(staticLat, staticLon);
+        } else {
+            resumeLocation = CLLocationCoordinate2DMake(currentLat, currentLon);
+        }
+        
+        // Resume static spoofing
+        [self startStaticSpoofAtLocation:resumeLocation];
+        
+        NSLog(@"[GhostWalker] Resumed spoofing at: %f, %f", resumeLocation.latitude, resumeLocation.longitude);
+    }
+}
+
+- (void)clearPersistentState {
+    [[NSFileManager defaultManager] removeItemAtPath:kPersistPath error:nil];
+}
+
+#pragma mark - App Lifecycle
+
+- (void)appWillResignActive {
+    NSLog(@"[GhostWalker] App going to background, saving state...");
+    [self savePersistentState];
+    
+    // Keep the location file updated even when backgrounded
+    // The tweak will continue reading it
+}
+
+- (void)appDidBecomeActive {
+    NSLog(@"[GhostWalker] App became active");
+    // Timer will continue if spoofing was active
 }
 
 @end

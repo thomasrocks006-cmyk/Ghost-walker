@@ -2,7 +2,7 @@
 //  MainViewController.m
 //  Ghost Walker
 //
-//  Main dashboard with map and controls
+//  Main dashboard with map, controls, verification markers, and all modes
 //
 
 #import "MainViewController.h"
@@ -23,16 +23,26 @@
 @property (nonatomic, strong) MKPolyline *routePolyline;
 @property (nonatomic, strong) MKPolyline *walkedPolyline;
 
-// UI Elements
-@property (nonatomic, strong) UIView *statusBar;
-@property (nonatomic, strong) UIView *statusDot;
-@property (nonatomic, strong) UILabel *statusLabel;
-@property (nonatomic, strong) UILabel *distanceLabel;
+// Verification Banner (Task 8)
+@property (nonatomic, strong) UIView *verificationBanner;
+@property (nonatomic, strong) UIView *statusIndicator;
+@property (nonatomic, strong) UILabel *statusMainLabel;
+@property (nonatomic, strong) UILabel *statusDetailLabel;
+@property (nonatomic, strong) UILabel *updateCountLabel;
+@property (nonatomic, strong) UILabel *accuracyLabel;
+@property (nonatomic, strong) UILabel *durationLabel;
 
+// Control Panel
 @property (nonatomic, strong) UIView *controlPanel;
-@property (nonatomic, strong) UIButton *mainButton;
+@property (nonatomic, strong) UISegmentedControl *modeSelector;
+@property (nonatomic, strong) UIButton *holdHereButton;
+@property (nonatomic, strong) UIButton *routeButton;
+@property (nonatomic, strong) UIButton *stopButton;
 @property (nonatomic, strong) UIButton *settingsButton;
 @property (nonatomic, strong) UIButton *searchButton;
+
+// Speed Section
+@property (nonatomic, strong) UIView *speedSection;
 @property (nonatomic, strong) UISlider *speedSlider;
 @property (nonatomic, strong) UILabel *speedLabel;
 
@@ -41,6 +51,7 @@
 
 // State
 @property (nonatomic, assign) BOOL hasInitializedMap;
+@property (nonatomic, strong) NSTimer *uiUpdateTimer;
 
 @end
 
@@ -51,17 +62,24 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     
+    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    
     [self setupWalkingEngine];
     [self setupLocationManager];
     [self setupMapView];
-    [self setupStatusBar];
+    [self setupVerificationBanner];
     [self setupControlPanel];
     [self setupGestures];
+    [self startUIUpdateTimer];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     [self.locationManager requestAlwaysAuthorization];
+}
+
+- (void)dealloc {
+    [self.uiUpdateTimer invalidate];
 }
 
 #pragma mark - Setup
@@ -87,7 +105,7 @@
     self.mapView.showsScale = YES;
     [self.view addSubview:self.mapView];
     
-    // Create annotations
+    // Annotations
     self.realLocationAnnotation = [[MKPointAnnotation alloc] init];
     self.realLocationAnnotation.title = @"Real Location";
     
@@ -98,69 +116,88 @@
     self.destinationAnnotation.title = @"Destination";
 }
 
-- (void)setupStatusBar {
-    // Container
-    self.statusBar = [[UIView alloc] init];
-    self.statusBar.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:self.statusBar];
+- (void)setupVerificationBanner {
+    // Main banner container
+    self.verificationBanner = [[UIView alloc] init];
+    self.verificationBanner.translatesAutoresizingMaskIntoConstraints = NO;
+    self.verificationBanner.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.85];
+    self.verificationBanner.layer.cornerRadius = 16;
+    [self.view addSubview:self.verificationBanner];
     
-    // Status indicator (left side)
-    UIView *statusContainer = [[UIView alloc] init];
-    statusContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    statusContainer.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
-    statusContainer.layer.cornerRadius = 16;
-    [self.statusBar addSubview:statusContainer];
+    // Status indicator (pulsing dot)
+    self.statusIndicator = [[UIView alloc] init];
+    self.statusIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statusIndicator.backgroundColor = [UIColor grayColor];
+    self.statusIndicator.layer.cornerRadius = 8;
+    [self.verificationBanner addSubview:self.statusIndicator];
     
-    self.statusDot = [[UIView alloc] init];
-    self.statusDot.translatesAutoresizingMaskIntoConstraints = NO;
-    self.statusDot.backgroundColor = [UIColor grayColor];
-    self.statusDot.layer.cornerRadius = 6;
-    [statusContainer addSubview:self.statusDot];
+    // Main status label
+    self.statusMainLabel = [[UILabel alloc] init];
+    self.statusMainLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statusMainLabel.text = @"IDLE";
+    self.statusMainLabel.textColor = [UIColor whiteColor];
+    self.statusMainLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    [self.verificationBanner addSubview:self.statusMainLabel];
     
-    self.statusLabel = [[UILabel alloc] init];
-    self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.statusLabel.text = @"Idle";
-    self.statusLabel.textColor = [UIColor whiteColor];
-    self.statusLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    [statusContainer addSubview:self.statusLabel];
+    // Detail label (last update)
+    self.statusDetailLabel = [[UILabel alloc] init];
+    self.statusDetailLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statusDetailLabel.text = @"Tap map to set location";
+    self.statusDetailLabel.textColor = [UIColor lightGrayColor];
+    self.statusDetailLabel.font = [UIFont systemFontOfSize:12];
+    [self.verificationBanner addSubview:self.statusDetailLabel];
     
-    // Distance label (right side)
-    self.distanceLabel = [[UILabel alloc] init];
-    self.distanceLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.distanceLabel.textColor = [UIColor whiteColor];
-    self.distanceLabel.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightMedium];
-    self.distanceLabel.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
-    self.distanceLabel.textAlignment = NSTextAlignmentCenter;
-    self.distanceLabel.layer.cornerRadius = 16;
-    self.distanceLabel.layer.masksToBounds = YES;
-    self.distanceLabel.hidden = YES;
-    [self.statusBar addSubview:self.distanceLabel];
+    // Stats row
+    UIStackView *statsStack = [[UIStackView alloc] init];
+    statsStack.translatesAutoresizingMaskIntoConstraints = NO;
+    statsStack.axis = UILayoutConstraintAxisHorizontal;
+    statsStack.distribution = UIStackViewDistributionEqualSpacing;
+    statsStack.spacing = 16;
+    [self.verificationBanner addSubview:statsStack];
+    
+    // Update count
+    self.updateCountLabel = [self createStatLabel:@"Updates: 0"];
+    [statsStack addArrangedSubview:self.updateCountLabel];
+    
+    // Accuracy
+    self.accuracyLabel = [self createStatLabel:@"Accuracy: --"];
+    [statsStack addArrangedSubview:self.accuracyLabel];
+    
+    // Duration
+    self.durationLabel = [self createStatLabel:@"Duration: --"];
+    [statsStack addArrangedSubview:self.durationLabel];
     
     // Constraints
     [NSLayoutConstraint activateConstraints:@[
-        [self.statusBar.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
-        [self.statusBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
-        [self.statusBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
-        [self.statusBar.heightAnchor constraintEqualToConstant:32],
+        [self.verificationBanner.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [self.verificationBanner.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
+        [self.verificationBanner.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-12],
         
-        [statusContainer.leadingAnchor constraintEqualToAnchor:self.statusBar.leadingAnchor],
-        [statusContainer.centerYAnchor constraintEqualToAnchor:self.statusBar.centerYAnchor],
-        [statusContainer.heightAnchor constraintEqualToConstant:32],
+        [self.statusIndicator.leadingAnchor constraintEqualToAnchor:self.verificationBanner.leadingAnchor constant:16],
+        [self.statusIndicator.topAnchor constraintEqualToAnchor:self.verificationBanner.topAnchor constant:16],
+        [self.statusIndicator.widthAnchor constraintEqualToConstant:16],
+        [self.statusIndicator.heightAnchor constraintEqualToConstant:16],
         
-        [self.statusDot.leadingAnchor constraintEqualToAnchor:statusContainer.leadingAnchor constant:12],
-        [self.statusDot.centerYAnchor constraintEqualToAnchor:statusContainer.centerYAnchor],
-        [self.statusDot.widthAnchor constraintEqualToConstant:12],
-        [self.statusDot.heightAnchor constraintEqualToConstant:12],
+        [self.statusMainLabel.leadingAnchor constraintEqualToAnchor:self.statusIndicator.trailingAnchor constant:10],
+        [self.statusMainLabel.centerYAnchor constraintEqualToAnchor:self.statusIndicator.centerYAnchor],
         
-        [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.statusDot.trailingAnchor constant:8],
-        [self.statusLabel.trailingAnchor constraintEqualToAnchor:statusContainer.trailingAnchor constant:-12],
-        [self.statusLabel.centerYAnchor constraintEqualToAnchor:statusContainer.centerYAnchor],
+        [self.statusDetailLabel.leadingAnchor constraintEqualToAnchor:self.statusIndicator.leadingAnchor],
+        [self.statusDetailLabel.topAnchor constraintEqualToAnchor:self.statusIndicator.bottomAnchor constant:8],
+        [self.statusDetailLabel.trailingAnchor constraintEqualToAnchor:self.verificationBanner.trailingAnchor constant:-16],
         
-        [self.distanceLabel.trailingAnchor constraintEqualToAnchor:self.statusBar.trailingAnchor],
-        [self.distanceLabel.centerYAnchor constraintEqualToAnchor:self.statusBar.centerYAnchor],
-        [self.distanceLabel.heightAnchor constraintEqualToConstant:32],
-        [self.distanceLabel.widthAnchor constraintGreaterThanOrEqualToConstant:80],
+        [statsStack.leadingAnchor constraintEqualToAnchor:self.verificationBanner.leadingAnchor constant:16],
+        [statsStack.trailingAnchor constraintEqualToAnchor:self.verificationBanner.trailingAnchor constant:-16],
+        [statsStack.topAnchor constraintEqualToAnchor:self.statusDetailLabel.bottomAnchor constant:10],
+        [statsStack.bottomAnchor constraintEqualToAnchor:self.verificationBanner.bottomAnchor constant:-12],
     ]];
+}
+
+- (UILabel *)createStatLabel:(NSString *)text {
+    UILabel *label = [[UILabel alloc] init];
+    label.text = text;
+    label.textColor = [UIColor lightGrayColor];
+    label.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightMedium];
+    return label;
 }
 
 - (void)setupControlPanel {
@@ -171,26 +208,35 @@
     self.controlPanel.layer.cornerRadius = 20;
     [self.view addSubview:self.controlPanel];
     
-    // Speed slider section
-    UIView *speedSection = [[UIView alloc] init];
-    speedSection.translatesAutoresizingMaskIntoConstraints = NO;
-    speedSection.hidden = YES;
-    speedSection.tag = 100; // Tag for later access
-    [self.controlPanel addSubview:speedSection];
+    // Mode selector (Static Hold / Walk / Drive)
+    self.modeSelector = [[UISegmentedControl alloc] initWithItems:@[@"Hold", @"Walk", @"Drive"]];
+    self.modeSelector.translatesAutoresizingMaskIntoConstraints = NO;
+    self.modeSelector.selectedSegmentIndex = 0;
+    self.modeSelector.selectedSegmentTintColor = [UIColor systemBlueColor];
+    [self.modeSelector setTitleTextAttributes:@{NSForegroundColorAttributeName: [UIColor whiteColor]} forState:UIControlStateSelected];
+    [self.modeSelector setTitleTextAttributes:@{NSForegroundColorAttributeName: [UIColor lightGrayColor]} forState:UIControlStateNormal];
+    [self.modeSelector addTarget:self action:@selector(modeSelectorChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.controlPanel addSubview:self.modeSelector];
+    
+    // Speed section (hidden when in Hold mode)
+    self.speedSection = [[UIView alloc] init];
+    self.speedSection.translatesAutoresizingMaskIntoConstraints = NO;
+    self.speedSection.hidden = YES;
+    [self.controlPanel addSubview:self.speedSection];
     
     UILabel *speedTitle = [[UILabel alloc] init];
     speedTitle.translatesAutoresizingMaskIntoConstraints = NO;
     speedTitle.text = @"Speed";
     speedTitle.textColor = [UIColor grayColor];
     speedTitle.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
-    [speedSection addSubview:speedTitle];
+    [self.speedSection addSubview:speedTitle];
     
     self.speedLabel = [[UILabel alloc] init];
     self.speedLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.speedLabel.text = @"1.4 m/s";
     self.speedLabel.textColor = [UIColor whiteColor];
     self.speedLabel.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightMedium];
-    [speedSection addSubview:self.speedLabel];
+    [self.speedSection addSubview:self.speedLabel];
     
     self.speedSlider = [[UISlider alloc] init];
     self.speedSlider.translatesAutoresizingMaskIntoConstraints = NO;
@@ -199,106 +245,204 @@
     self.speedSlider.value = 1.4;
     self.speedSlider.tintColor = [UIColor systemGreenColor];
     [self.speedSlider addTarget:self action:@selector(speedSliderChanged:) forControlEvents:UIControlEventValueChanged];
-    [speedSection addSubview:self.speedSlider];
+    [self.speedSection addSubview:self.speedSlider];
     
-    // Buttons row
+    // Button row
     UIStackView *buttonStack = [[UIStackView alloc] init];
     buttonStack.translatesAutoresizingMaskIntoConstraints = NO;
     buttonStack.axis = UILayoutConstraintAxisHorizontal;
-    buttonStack.spacing = 16;
+    buttonStack.spacing = 12;
     buttonStack.alignment = UIStackViewAlignmentCenter;
     [self.controlPanel addSubview:buttonStack];
     
     // Settings button
-    self.settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.settingsButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.settingsButton setImage:[UIImage systemImageNamed:@"gearshape.fill"] forState:UIControlStateNormal];
-    self.settingsButton.tintColor = [UIColor whiteColor];
-    self.settingsButton.backgroundColor = [[UIColor grayColor] colorWithAlphaComponent:0.8];
-    self.settingsButton.layer.cornerRadius = 25;
+    self.settingsButton = [self createCircleButton:@"gearshape.fill" color:[UIColor darkGrayColor]];
     [self.settingsButton addTarget:self action:@selector(settingsButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [buttonStack addArrangedSubview:self.settingsButton];
     
-    // Main button
-    self.mainButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.mainButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.mainButton.backgroundColor = [UIColor systemBlueColor];
-    self.mainButton.layer.cornerRadius = 25;
-    self.mainButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-    [self.mainButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    [self.mainButton addTarget:self action:@selector(mainButtonTapped) forControlEvents:UIControlEventTouchUpInside];
-    [buttonStack addArrangedSubview:self.mainButton];
+    // Hold Here button (for static mode)
+    self.holdHereButton = [self createMainButton:@"Hold Here" icon:@"location.fill" color:[UIColor systemBlueColor]];
+    [self.holdHereButton addTarget:self action:@selector(holdHereButtonTapped) forControlEvents:UIControlEventTouchUpInside];
+    [buttonStack addArrangedSubview:self.holdHereButton];
+    
+    // Route button (for walk/drive mode)
+    self.routeButton = [self createMainButton:@"Start Route" icon:@"figure.walk" color:[UIColor systemGreenColor]];
+    self.routeButton.hidden = YES;
+    [self.routeButton addTarget:self action:@selector(routeButtonTapped) forControlEvents:UIControlEventTouchUpInside];
+    [buttonStack addArrangedSubview:self.routeButton];
+    
+    // Stop button
+    self.stopButton = [self createMainButton:@"Stop" icon:@"stop.fill" color:[UIColor systemRedColor]];
+    self.stopButton.hidden = YES;
+    [self.stopButton addTarget:self action:@selector(stopButtonTapped) forControlEvents:UIControlEventTouchUpInside];
+    [buttonStack addArrangedSubview:self.stopButton];
     
     // Search button
-    self.searchButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.searchButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.searchButton setImage:[UIImage systemImageNamed:@"mappin.circle.fill"] forState:UIControlStateNormal];
-    self.searchButton.tintColor = [UIColor whiteColor];
-    self.searchButton.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.8];
-    self.searchButton.layer.cornerRadius = 25;
+    self.searchButton = [self createCircleButton:@"magnifyingglass" color:[UIColor systemBlueColor]];
     [self.searchButton addTarget:self action:@selector(searchButtonTapped) forControlEvents:UIControlEventTouchUpInside];
     [buttonStack addArrangedSubview:self.searchButton];
     
-    [self updateMainButton];
-    
     // Constraints
     [NSLayoutConstraint activateConstraints:@[
-        [self.controlPanel.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-16],
-        [self.controlPanel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
-        [self.controlPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
+        [self.controlPanel.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-12],
+        [self.controlPanel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
+        [self.controlPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-12],
         
-        [speedSection.topAnchor constraintEqualToAnchor:self.controlPanel.topAnchor constant:16],
-        [speedSection.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:16],
-        [speedSection.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-16],
+        [self.modeSelector.topAnchor constraintEqualToAnchor:self.controlPanel.topAnchor constant:16],
+        [self.modeSelector.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:16],
+        [self.modeSelector.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-16],
         
-        [speedTitle.topAnchor constraintEqualToAnchor:speedSection.topAnchor],
-        [speedTitle.leadingAnchor constraintEqualToAnchor:speedSection.leadingAnchor],
+        [self.speedSection.topAnchor constraintEqualToAnchor:self.modeSelector.bottomAnchor constant:12],
+        [self.speedSection.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:16],
+        [self.speedSection.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-16],
+        [self.speedSection.heightAnchor constraintEqualToConstant:50],
         
-        [self.speedLabel.topAnchor constraintEqualToAnchor:speedSection.topAnchor],
-        [self.speedLabel.trailingAnchor constraintEqualToAnchor:speedSection.trailingAnchor],
+        [speedTitle.topAnchor constraintEqualToAnchor:self.speedSection.topAnchor],
+        [speedTitle.leadingAnchor constraintEqualToAnchor:self.speedSection.leadingAnchor],
         
-        [self.speedSlider.topAnchor constraintEqualToAnchor:speedTitle.bottomAnchor constant:8],
-        [self.speedSlider.leadingAnchor constraintEqualToAnchor:speedSection.leadingAnchor],
-        [self.speedSlider.trailingAnchor constraintEqualToAnchor:speedSection.trailingAnchor],
-        [self.speedSlider.bottomAnchor constraintEqualToAnchor:speedSection.bottomAnchor],
+        [self.speedLabel.topAnchor constraintEqualToAnchor:self.speedSection.topAnchor],
+        [self.speedLabel.trailingAnchor constraintEqualToAnchor:self.speedSection.trailingAnchor],
         
-        [buttonStack.topAnchor constraintEqualToAnchor:speedSection.bottomAnchor constant:16],
+        [self.speedSlider.topAnchor constraintEqualToAnchor:speedTitle.bottomAnchor constant:4],
+        [self.speedSlider.leadingAnchor constraintEqualToAnchor:self.speedSection.leadingAnchor],
+        [self.speedSlider.trailingAnchor constraintEqualToAnchor:self.speedSection.trailingAnchor],
+        
+        [buttonStack.topAnchor constraintEqualToAnchor:self.speedSection.bottomAnchor constant:12],
         [buttonStack.centerXAnchor constraintEqualToAnchor:self.controlPanel.centerXAnchor],
         [buttonStack.bottomAnchor constraintEqualToAnchor:self.controlPanel.bottomAnchor constant:-16],
         
-        [self.settingsButton.widthAnchor constraintEqualToConstant:50],
-        [self.settingsButton.heightAnchor constraintEqualToConstant:50],
+        [self.settingsButton.widthAnchor constraintEqualToConstant:44],
+        [self.settingsButton.heightAnchor constraintEqualToConstant:44],
         
-        [self.mainButton.widthAnchor constraintEqualToConstant:180],
-        [self.mainButton.heightAnchor constraintEqualToConstant:50],
+        [self.holdHereButton.widthAnchor constraintEqualToConstant:140],
+        [self.holdHereButton.heightAnchor constraintEqualToConstant:44],
         
-        [self.searchButton.widthAnchor constraintEqualToConstant:50],
-        [self.searchButton.heightAnchor constraintEqualToConstant:50],
+        [self.routeButton.widthAnchor constraintEqualToConstant:140],
+        [self.routeButton.heightAnchor constraintEqualToConstant:44],
+        
+        [self.stopButton.widthAnchor constraintEqualToConstant:100],
+        [self.stopButton.heightAnchor constraintEqualToConstant:44],
+        
+        [self.searchButton.widthAnchor constraintEqualToConstant:44],
+        [self.searchButton.heightAnchor constraintEqualToConstant:44],
     ]];
+}
+
+- (UIButton *)createCircleButton:(NSString *)iconName color:(UIColor *)color {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button setImage:[UIImage systemImageNamed:iconName] forState:UIControlStateNormal];
+    button.tintColor = [UIColor whiteColor];
+    button.backgroundColor = color;
+    button.layer.cornerRadius = 22;
+    return button;
+}
+
+- (UIButton *)createMainButton:(NSString *)title icon:(NSString *)iconName color:(UIColor *)color {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    UIImage *icon = [UIImage systemImageNamed:iconName];
+    [button setImage:icon forState:UIControlStateNormal];
+    [button setTitle:[NSString stringWithFormat:@" %@", title] forState:UIControlStateNormal];
+    button.tintColor = [UIColor whiteColor];
+    button.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    button.backgroundColor = color;
+    button.layer.cornerRadius = 22;
+    
+    return button;
 }
 
 - (void)setupGestures {
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     longPress.minimumPressDuration = 0.5;
     [self.mapView addGestureRecognizer:longPress];
+    
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
+    [self.mapView addGestureRecognizer:tap];
+}
+
+- (void)startUIUpdateTimer {
+    self.uiUpdateTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
+                                                          target:self
+                                                        selector:@selector(updateVerificationUI)
+                                                        userInfo:nil
+                                                         repeats:YES];
 }
 
 #pragma mark - Actions
 
-- (void)mainButtonTapped {
-    if (self.walkingEngine.isWalking) {
-        [self.walkingEngine stopWalking];
-    } else if (self.walkingEngine.destination.latitude != 0) {
-        CLLocation *currentLocation = self.locationManager.location;
-        if (currentLocation) {
-            [self.walkingEngine startWalkingFrom:currentLocation.coordinate];
-        }
+- (void)modeSelectorChanged:(UISegmentedControl *)sender {
+    switch (sender.selectedSegmentIndex) {
+        case 0: // Hold
+            self.walkingEngine.movementMode = GhostMovementModeStatic;
+            self.speedSection.hidden = YES;
+            self.holdHereButton.hidden = NO;
+            self.routeButton.hidden = YES;
+            break;
+        case 1: // Walk
+            self.walkingEngine.movementMode = GhostMovementModeWalking;
+            self.speedSection.hidden = NO;
+            self.speedSlider.maximumValue = 4.0;
+            self.speedSlider.value = 1.4;
+            self.holdHereButton.hidden = YES;
+            self.routeButton.hidden = NO;
+            [self.routeButton setTitle:@" Start Walk" forState:UIControlStateNormal];
+            [self.routeButton setImage:[UIImage systemImageNamed:@"figure.walk"] forState:UIControlStateNormal];
+            break;
+        case 2: // Drive
+            self.walkingEngine.movementMode = GhostMovementModeDriving;
+            self.speedSection.hidden = NO;
+            self.speedSlider.maximumValue = 40.0;
+            self.speedSlider.value = 13.9;
+            self.holdHereButton.hidden = YES;
+            self.routeButton.hidden = NO;
+            [self.routeButton setTitle:@" Start Drive" forState:UIControlStateNormal];
+            [self.routeButton setImage:[UIImage systemImageNamed:@"car.fill"] forState:UIControlStateNormal];
+            break;
     }
+    [self updateSpeedLabel];
+    [self updateButtonStates];
+}
+
+- (void)holdHereButtonTapped {
+    CLLocationCoordinate2D center = self.mapView.centerCoordinate;
+    [self.walkingEngine startStaticSpoofAtLocation:center];
+    [self updateUI];
+    [self updateAnnotations];
+    
+    // Haptic feedback
+    UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [feedback impactOccurred];
+}
+
+- (void)routeButtonTapped {
+    if (self.walkingEngine.destination.latitude == 0) {
+        // No destination set
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"No Destination"
+                                                                       message:@"Long-press on the map or use search to set a destination first."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+    
+    CLLocation *currentLocation = self.locationManager.location;
+    CLLocationCoordinate2D startPoint = currentLocation ? currentLocation.coordinate : self.mapView.centerCoordinate;
+    
+    [self.walkingEngine startMovingFrom:startPoint];
     [self updateUI];
 }
 
+- (void)stopButtonTapped {
+    [self.walkingEngine stopAllSpoofing];
+    [self updateUI];
+    [self updateAnnotations];
+}
+
 - (void)settingsButtonTapped {
-    SettingsViewController *settingsVC = [[SettingsViewController alloc] initWithWalkingEngine:self.walkingEngine];
+    SettingsViewController *settingsVC = [[SettingsViewController alloc] initWithStyle:UITableViewStyleGrouped];
+    settingsVC.delegate = self;
     UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:settingsVC];
     [self presentViewController:navController animated:YES completion:nil];
 }
@@ -309,13 +453,21 @@
         [self.walkingEngine setDestination:coordinate];
         [self updateUI];
         [self updateAnnotations];
+        
+        // Center map on destination
+        MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(coordinate, 1000, 1000);
+        [self.mapView setRegion:region animated:YES];
     };
     UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:searchVC];
     [self presentViewController:navController animated:YES completion:nil];
 }
 
 - (void)speedSliderChanged:(UISlider *)slider {
-    self.walkingEngine.walkingSpeed = slider.value;
+    if (self.walkingEngine.movementMode == GhostMovementModeDriving) {
+        self.walkingEngine.drivingSpeed = slider.value;
+    } else {
+        self.walkingEngine.walkingSpeed = slider.value;
+    }
     [self updateSpeedLabel];
 }
 
@@ -325,105 +477,148 @@
     CGPoint point = [gesture locationInView:self.mapView];
     CLLocationCoordinate2D coordinate = [self.mapView convertPoint:point toCoordinateFromView:self.mapView];
     
-    [self.walkingEngine setDestination:coordinate];
+    if (self.modeSelector.selectedSegmentIndex == 0) {
+        // Hold mode - start holding at this location
+        [self.walkingEngine startStaticSpoofAtLocation:coordinate];
+    } else {
+        // Route mode - set as destination
+        [self.walkingEngine setDestination:coordinate];
+    }
+    
     [self updateUI];
     [self updateAnnotations];
     
-    // Haptic feedback
     UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
     [feedback impactOccurred];
+}
+
+- (void)handleTap:(UITapGestureRecognizer *)gesture {
+    // Optional: could use tap for quick actions
 }
 
 #pragma mark - UI Updates
 
 - (void)updateUI {
-    [self updateMainButton];
-    [self updateStatusBar];
-    [self updateSpeedSection];
+    [self updateButtonStates];
+    [self updateVerificationUI];
 }
 
-- (void)updateMainButton {
-    NSString *title;
-    NSString *iconName;
-    UIColor *color;
+- (void)updateButtonStates {
+    BOOL isActive = self.walkingEngine.isActive;
     
-    if (self.walkingEngine.isWalking) {
-        title = @"  Stop";
-        iconName = @"stop.fill";
-        color = [UIColor systemRedColor];
-    } else if (self.walkingEngine.destination.latitude != 0) {
-        title = @"  Start Walking";
-        iconName = @"figure.walk";
-        color = [UIColor systemGreenColor];
-    } else {
-        title = @"  Set Destination";
-        iconName = @"location.fill";
-        color = [UIColor systemBlueColor];
-    }
+    self.holdHereButton.hidden = isActive || self.modeSelector.selectedSegmentIndex != 0;
+    self.routeButton.hidden = isActive || self.modeSelector.selectedSegmentIndex == 0;
+    self.stopButton.hidden = !isActive;
     
-    UIImage *icon = [UIImage systemImageNamed:iconName];
-    [self.mainButton setImage:icon forState:UIControlStateNormal];
-    [self.mainButton setTitle:title forState:UIControlStateNormal];
-    self.mainButton.tintColor = [UIColor whiteColor];
-    self.mainButton.backgroundColor = color;
+    self.modeSelector.enabled = !isActive;
 }
 
-- (void)updateStatusBar {
-    UIColor *dotColor;
-    NSString *statusText;
+- (void)updateVerificationUI {
+    GhostSpoofStatus status = self.walkingEngine.status;
     
-    if (self.walkingEngine.isWalking) {
-        dotColor = [UIColor systemGreenColor];
-        statusText = @"Walking";
-        self.distanceLabel.hidden = NO;
-    } else if (self.walkingEngine.currentSpoofedLocation.latitude != 0) {
-        dotColor = [UIColor systemOrangeColor];
-        statusText = @"Spoofing";
-        self.distanceLabel.hidden = YES;
-    } else {
-        dotColor = [UIColor grayColor];
-        statusText = @"Idle";
-        self.distanceLabel.hidden = YES;
+    // Status indicator color and text
+    switch (status) {
+        case GhostSpoofStatusIdle:
+            self.statusIndicator.backgroundColor = [UIColor grayColor];
+            self.statusMainLabel.text = @"IDLE";
+            self.statusDetailLabel.text = @"Tap and hold map to set location";
+            break;
+            
+        case GhostSpoofStatusActive:
+            self.statusIndicator.backgroundColor = [UIColor systemGreenColor];
+            self.statusMainLabel.text = @"🟢 SPOOFING ACTIVE";
+            self.statusDetailLabel.text = [NSString stringWithFormat:@"Holding at %.6f, %.6f",
+                                           self.walkingEngine.currentSpoofedLocation.latitude,
+                                           self.walkingEngine.currentSpoofedLocation.longitude];
+            [self pulseStatusIndicator];
+            break;
+            
+        case GhostSpoofStatusMoving:
+            self.statusIndicator.backgroundColor = [UIColor systemBlueColor];
+            self.statusMainLabel.text = self.walkingEngine.movementMode == GhostMovementModeDriving ? @"🚗 DRIVING" : @"🚶 WALKING";
+            self.statusDetailLabel.text = [NSString stringWithFormat:@"%.0f meters remaining",
+                                           self.walkingEngine.remainingDistance];
+            [self pulseStatusIndicator];
+            break;
+            
+        case GhostSpoofStatusError:
+            self.statusIndicator.backgroundColor = [UIColor systemOrangeColor];
+            self.statusMainLabel.text = @"⚠️ FAILSAFE ACTIVE";
+            self.statusDetailLabel.text = @"Rubber-band detected, holding last position";
+            break;
     }
     
-    self.statusDot.backgroundColor = dotColor;
-    self.statusLabel.text = statusText;
+    // Stats
+    self.updateCountLabel.text = [NSString stringWithFormat:@"Updates: %lu", (unsigned long)self.walkingEngine.updateCount];
     
-    // Update distance label
-    double distance = self.walkingEngine.remainingDistance;
-    if (distance >= 1000) {
-        self.distanceLabel.text = [NSString stringWithFormat:@"  %.1f km  ", distance / 1000];
+    if (self.walkingEngine.isActive) {
+        // Get current accuracy from engine (we'll need to expose this)
+        self.accuracyLabel.text = [NSString stringWithFormat:@"Range: %.0f-%.0fm",
+                                   self.walkingEngine.accuracyMin, self.walkingEngine.accuracyMax];
+        
+        // Duration
+        if (self.walkingEngine.spoofStartTime) {
+            NSTimeInterval duration = [[NSDate date] timeIntervalSinceDate:self.walkingEngine.spoofStartTime];
+            int hours = (int)duration / 3600;
+            int minutes = ((int)duration % 3600) / 60;
+            int seconds = (int)duration % 60;
+            
+            if (hours > 0) {
+                self.durationLabel.text = [NSString stringWithFormat:@"Duration: %dh %dm", hours, minutes];
+            } else if (minutes > 0) {
+                self.durationLabel.text = [NSString stringWithFormat:@"Duration: %dm %ds", minutes, seconds];
+            } else {
+                self.durationLabel.text = [NSString stringWithFormat:@"Duration: %ds", seconds];
+            }
+        }
     } else {
-        self.distanceLabel.text = [NSString stringWithFormat:@"  %.0f m  ", distance];
+        self.accuracyLabel.text = @"Accuracy: --";
+        self.durationLabel.text = @"Duration: --";
     }
 }
 
-- (void)updateSpeedSection {
-    UIView *speedSection = [self.controlPanel viewWithTag:100];
-    speedSection.hidden = !self.walkingEngine.isWalking;
+- (void)pulseStatusIndicator {
+    [UIView animateWithDuration:0.5 delay:0 options:UIViewAnimationOptionAutoreverse | UIViewAnimationOptionRepeat animations:^{
+        self.statusIndicator.alpha = 0.5;
+    } completion:nil];
 }
 
 - (void)updateSpeedLabel {
     float speed = self.speedSlider.value;
     NSString *description;
+    NSString *unit;
     
-    if (speed <= 1.0) {
-        description = @"Slow Walk";
-    } else if (speed <= 1.5) {
-        description = @"Walk";
-    } else if (speed <= 2.5) {
-        description = @"Fast Walk";
-    } else if (speed <= 4.0) {
-        description = @"Jog";
+    if (self.walkingEngine.movementMode == GhostMovementModeDriving) {
+        // Convert m/s to km/h for driving
+        float kmh = speed * 3.6;
+        if (kmh < 30) {
+            description = @"Slow";
+        } else if (kmh < 60) {
+            description = @"City";
+        } else if (kmh < 100) {
+            description = @"Highway";
+        } else {
+            description = @"Fast";
+        }
+        unit = [NSString stringWithFormat:@"%.0f km/h (%@)", kmh, description];
     } else {
-        description = @"Run";
+        if (speed <= 1.0) {
+            description = @"Slow Walk";
+        } else if (speed <= 1.5) {
+            description = @"Walk";
+        } else if (speed <= 2.5) {
+            description = @"Fast Walk";
+        } else {
+            description = @"Jog";
+        }
+        unit = [NSString stringWithFormat:@"%.1f m/s (%@)", speed, description];
     }
     
-    self.speedLabel.text = [NSString stringWithFormat:@"%.1f m/s (%@)", speed, description];
+    self.speedLabel.text = unit;
 }
 
 - (void)updateAnnotations {
-    // Remove existing annotations (except user location)
+    // Remove existing
     NSMutableArray *toRemove = [NSMutableArray array];
     for (id<MKAnnotation> annotation in self.mapView.annotations) {
         if (![annotation isKindOfClass:[MKUserLocation class]]) {
@@ -431,30 +626,28 @@
         }
     }
     [self.mapView removeAnnotations:toRemove];
-    
-    // Remove overlays
     [self.mapView removeOverlays:self.mapView.overlays];
     
-    // Add real location
+    // Real location (gray)
     CLLocation *realLocation = self.locationManager.location;
     if (realLocation) {
         self.realLocationAnnotation.coordinate = realLocation.coordinate;
         [self.mapView addAnnotation:self.realLocationAnnotation];
     }
     
-    // Add spoofed location
+    // Spoofed location (green)
     if (self.walkingEngine.currentSpoofedLocation.latitude != 0) {
         self.spoofedLocationAnnotation.coordinate = self.walkingEngine.currentSpoofedLocation;
         [self.mapView addAnnotation:self.spoofedLocationAnnotation];
     }
     
-    // Add destination
-    if (self.walkingEngine.destination.latitude != 0) {
+    // Destination (red) - only for route mode
+    if (self.walkingEngine.destination.latitude != 0 && self.modeSelector.selectedSegmentIndex != 0) {
         self.destinationAnnotation.coordinate = self.walkingEngine.destination;
         [self.mapView addAnnotation:self.destinationAnnotation];
     }
     
-    // Add route polyline
+    // Route polyline
     NSArray *route = self.walkingEngine.currentRoute;
     if (route.count > 1) {
         CLLocationCoordinate2D *coords = malloc(sizeof(CLLocationCoordinate2D) * route.count);
@@ -467,7 +660,7 @@
         free(coords);
     }
     
-    // Add walked path polyline
+    // Walked path
     NSArray *walkedPath = self.walkingEngine.walkedPath;
     if (walkedPath.count > 1) {
         CLLocationCoordinate2D *coords = malloc(sizeof(CLLocationCoordinate2D) * walkedPath.count);
@@ -493,7 +686,6 @@
     CLLocation *location = locations.lastObject;
     if (!location) return;
     
-    // Initial map centering
     if (!self.hasInitializedMap) {
         MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(location.coordinate, 1000, 1000);
         [self.mapView setRegion:region animated:YES];
@@ -523,7 +715,7 @@
         markerView.glyphImage = [UIImage systemImageNamed:@"location.fill"];
     } else if (annotation == self.spoofedLocationAnnotation) {
         markerView.markerTintColor = [UIColor systemGreenColor];
-        markerView.glyphImage = [UIImage systemImageNamed:@"figure.walk"];
+        markerView.glyphImage = [UIImage systemImageNamed:@"figure.stand"];
     } else if (annotation == self.destinationAnnotation) {
         markerView.markerTintColor = [UIColor systemRedColor];
         markerView.glyphImage = [UIImage systemImageNamed:@"flag.fill"];
@@ -554,11 +746,10 @@
 
 - (void)walkingEngineDidUpdateLocation:(WalkingEngine *)engine {
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self updateUI];
         [self updateAnnotations];
         
-        // Center map on spoofed location
-        if (engine.currentSpoofedLocation.latitude != 0) {
+        // Center map on spoofed location when moving
+        if (engine.isMoving && engine.currentSpoofedLocation.latitude != 0) {
             MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(engine.currentSpoofedLocation, 500, 500);
             [self.mapView setRegion:region animated:YES];
         }
@@ -570,12 +761,46 @@
         [self updateUI];
         [self updateAnnotations];
         
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Arrived!" 
-                                                                       message:@"You have reached your destination." 
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Arrived!"
+                                                                       message:@"You have reached your destination. Location will continue to be spoofed here."
                                                                 preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil];
     });
+}
+
+- (void)walkingEngineDidDetectRubberBand:(WalkingEngine *)engine {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self updateUI];
+        
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"⚠️ Failsafe Activated"
+                                                                       message:@"A sudden location jump was detected. Freezing at last known good location to prevent rubber-banding."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+    });
+}
+
+- (void)walkingEngineStatusDidChange:(WalkingEngine *)engine {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self updateUI];
+    });
+}
+
+#pragma mark - SettingsViewControllerDelegate
+
+- (void)settingsDidChange {
+    // Reload settings into walking engine
+    self.walkingEngine.walkingSpeed = [SettingsViewController walkingSpeed];
+    self.walkingEngine.drivingSpeed = [SettingsViewController drivingSpeed];
+    self.walkingEngine.driftMin = [SettingsViewController driftMin];
+    self.walkingEngine.driftMax = [SettingsViewController driftMax];
+    self.walkingEngine.accuracyMin = [SettingsViewController accuracyMin];
+    self.walkingEngine.accuracyMax = [SettingsViewController accuracyMax];
+    self.walkingEngine.accuracyUpdateInterval = [SettingsViewController accuracyUpdateInterval];
+    self.walkingEngine.maxJumpDistance = [SettingsViewController failsafeThreshold];
+    
+    [self updateUI];
 }
 
 @end

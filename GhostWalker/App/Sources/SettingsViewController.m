@@ -1,39 +1,210 @@
 //
 //  SettingsViewController.m
-//  Ghost Walker
+//  GhostWalker
 //
-//  Settings for walk simulation parameters
+//  Complete settings for all spoofing modes
 //
 
 #import "SettingsViewController.h"
 
-@interface SettingsViewController () <UITableViewDataSource, UITableViewDelegate>
+// Settings Keys
+NSString * const kSettingsDefaultMode = @"defaultMode";
+NSString * const kSettingsWalkingSpeed = @"walkingSpeed";
+NSString * const kSettingsDrivingSpeed = @"drivingSpeed";
+NSString * const kSettingsDriftMin = @"driftMin";
+NSString * const kSettingsDriftMax = @"driftMax";
+NSString * const kSettingsAccuracyMin = @"accuracyMin";
+NSString * const kSettingsAccuracyMax = @"accuracyMax";
+NSString * const kSettingsAccuracyUpdateInterval = @"accuracyUpdateInterval";
+NSString * const kSettingsBackgroundEnabled = @"backgroundEnabled";
+NSString * const kSettingsJetsamProtection = @"jetsamProtection";
+NSString * const kSettingsFailsafeEnabled = @"failsafeEnabled";
+NSString * const kSettingsFailsafeThreshold = @"failsafeThreshold";
+NSString * const kSettingsVerificationEnabled = @"verificationEnabled";
+NSString * const kSettingsHapticFeedback = @"hapticFeedback";
+NSString * const kSettingsRouteProvider = @"routeProvider";
+NSString * const kSettingsAutoStartLastLocation = @"autoStartLastLocation";
 
-@property (nonatomic, strong) WalkingEngine *walkingEngine;
-@property (nonatomic, strong) UITableView *tableView;
+// Section indices
+typedef NS_ENUM(NSInteger, SettingsSection) {
+    SettingsSectionMode = 0,
+    SettingsSectionSpeed,
+    SettingsSectionDrift,
+    SettingsSectionAccuracy,
+    SettingsSectionBackground,
+    SettingsSectionFailsafe,
+    SettingsSectionUI,
+    SettingsSectionRouting,
+    SettingsSectionReset,
+    SettingsSectionCount
+};
 
-// Sliders
-@property (nonatomic, strong) UISlider *speedSlider;
-@property (nonatomic, strong) UISlider *driftSlider;
-@property (nonatomic, strong) UISlider *minAccuracySlider;
-@property (nonatomic, strong) UISlider *maxAccuracySlider;
+@interface SettingsViewController ()
 
-// Labels
-@property (nonatomic, strong) UILabel *speedValueLabel;
-@property (nonatomic, strong) UILabel *driftValueLabel;
-@property (nonatomic, strong) UILabel *minAccuracyValueLabel;
-@property (nonatomic, strong) UILabel *maxAccuracyValueLabel;
+// Speed
+@property (nonatomic, strong) UISlider *walkingSpeedSlider;
+@property (nonatomic, strong) UILabel *walkingSpeedLabel;
+@property (nonatomic, strong) UISlider *drivingSpeedSlider;
+@property (nonatomic, strong) UILabel *drivingSpeedLabel;
+
+// Drift
+@property (nonatomic, strong) UISlider *driftMinSlider;
+@property (nonatomic, strong) UILabel *driftMinLabel;
+@property (nonatomic, strong) UISlider *driftMaxSlider;
+@property (nonatomic, strong) UILabel *driftMaxLabel;
+
+// Accuracy
+@property (nonatomic, strong) UISlider *accuracyMinSlider;
+@property (nonatomic, strong) UILabel *accuracyMinLabel;
+@property (nonatomic, strong) UISlider *accuracyMaxSlider;
+@property (nonatomic, strong) UILabel *accuracyMaxLabel;
+@property (nonatomic, strong) UISlider *accuracyIntervalSlider;
+@property (nonatomic, strong) UILabel *accuracyIntervalLabel;
+
+// Background
+@property (nonatomic, strong) UISwitch *backgroundSwitch;
+@property (nonatomic, strong) UISwitch *jetsamSwitch;
+
+// Failsafe
+@property (nonatomic, strong) UISwitch *failsafeSwitch;
+@property (nonatomic, strong) UISlider *failsafeThresholdSlider;
+@property (nonatomic, strong) UILabel *failsafeThresholdLabel;
+
+// UI
+@property (nonatomic, strong) UISwitch *verificationSwitch;
+@property (nonatomic, strong) UISwitch *hapticSwitch;
+
+// Routing
+@property (nonatomic, strong) UISegmentedControl *modeSegment;
+@property (nonatomic, strong) UISwitch *autoStartSwitch;
 
 @end
 
 @implementation SettingsViewController
 
-- (instancetype)initWithWalkingEngine:(WalkingEngine *)engine {
-    self = [super init];
-    if (self) {
-        _walkingEngine = engine;
+#pragma mark - Class Methods for Settings Access
+
++ (NSUserDefaults *)defaults {
+    return [NSUserDefaults standardUserDefaults];
+}
+
++ (void)registerDefaults {
+    [[self defaults] registerDefaults:@{
+        kSettingsDefaultMode: @0,
+        kSettingsWalkingSpeed: @1.4,      // m/s (walking)
+        kSettingsDrivingSpeed: @13.4,     // m/s (~30 mph)
+        kSettingsDriftMin: @2.0,          // meters
+        kSettingsDriftMax: @8.0,          // meters
+        kSettingsAccuracyMin: @10.0,      // meters
+        kSettingsAccuracyMax: @25.0,      // meters
+        kSettingsAccuracyUpdateInterval: @10.0, // seconds
+        kSettingsBackgroundEnabled: @YES,
+        kSettingsJetsamProtection: @YES,
+        kSettingsFailsafeEnabled: @YES,
+        kSettingsFailsafeThreshold: @500.0, // meters
+        kSettingsVerificationEnabled: @YES,
+        kSettingsHapticFeedback: @YES,
+        kSettingsRouteProvider: @"osrm",
+        kSettingsAutoStartLastLocation: @NO
+    }];
+}
+
++ (NSInteger)defaultMode {
+    [self registerDefaults];
+    return [[self defaults] integerForKey:kSettingsDefaultMode];
+}
+
++ (double)walkingSpeed {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsWalkingSpeed];
+}
+
++ (double)drivingSpeed {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsDrivingSpeed];
+}
+
++ (double)driftMin {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsDriftMin];
+}
+
++ (double)driftMax {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsDriftMax];
+}
+
++ (double)accuracyMin {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsAccuracyMin];
+}
+
++ (double)accuracyMax {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsAccuracyMax];
+}
+
++ (NSTimeInterval)accuracyUpdateInterval {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsAccuracyUpdateInterval];
+}
+
++ (BOOL)backgroundEnabled {
+    [self registerDefaults];
+    return [[self defaults] boolForKey:kSettingsBackgroundEnabled];
+}
+
++ (BOOL)jetsamProtectionEnabled {
+    [self registerDefaults];
+    return [[self defaults] boolForKey:kSettingsJetsamProtection];
+}
+
++ (BOOL)failsafeEnabled {
+    [self registerDefaults];
+    return [[self defaults] boolForKey:kSettingsFailsafeEnabled];
+}
+
++ (double)failsafeThreshold {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsFailsafeThreshold];
+}
+
++ (BOOL)verificationEnabled {
+    [self registerDefaults];
+    return [[self defaults] boolForKey:kSettingsVerificationEnabled];
+}
+
++ (BOOL)hapticFeedbackEnabled {
+    [self registerDefaults];
+    return [[self defaults] boolForKey:kSettingsHapticFeedback];
+}
+
++ (NSString *)routeProvider {
+    [self registerDefaults];
+    return [[self defaults] stringForKey:kSettingsRouteProvider];
+}
+
++ (BOOL)autoStartLastLocation {
+    [self registerDefaults];
+    return [[self defaults] boolForKey:kSettingsAutoStartLastLocation];
+}
+
++ (void)resetToDefaults {
+    NSUserDefaults *defaults = [self defaults];
+    NSArray *keys = @[
+        kSettingsDefaultMode, kSettingsWalkingSpeed, kSettingsDrivingSpeed,
+        kSettingsDriftMin, kSettingsDriftMax, kSettingsAccuracyMin,
+        kSettingsAccuracyMax, kSettingsAccuracyUpdateInterval,
+        kSettingsBackgroundEnabled, kSettingsJetsamProtection,
+        kSettingsFailsafeEnabled, kSettingsFailsafeThreshold,
+        kSettingsVerificationEnabled, kSettingsHapticFeedback,
+        kSettingsRouteProvider, kSettingsAutoStartLastLocation
+    ];
+    
+    for (NSString *key in keys) {
+        [defaults removeObjectForKey:key];
     }
-    return self;
+    [defaults synchronize];
 }
 
 #pragma mark - Lifecycle
@@ -42,307 +213,450 @@
     [super viewDidLoad];
     
     self.title = @"Settings";
-    self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone 
-                                                                                           target:self 
-                                                                                           action:@selector(doneTapped)];
+    self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
     
-    [self setupTableView];
-    [self createSliders];
+    UIBarButtonItem *doneButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                                                target:self
+                                                                                action:@selector(dismissSettings)];
+    self.navigationItem.rightBarButtonItem = doneButton;
+    
+    [[self class] registerDefaults];
+    [self setupControls];
 }
 
-#pragma mark - Setup
-
-- (void)setupTableView {
-    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
-    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.tableView.dataSource = self;
-    self.tableView.delegate = self;
-    [self.view addSubview:self.tableView];
+- (void)setupControls {
+    // Speed sliders
+    self.walkingSpeedSlider = [[UISlider alloc] init];
+    self.walkingSpeedSlider.minimumValue = 0.5;
+    self.walkingSpeedSlider.maximumValue = 3.0;
+    self.walkingSpeedSlider.value = [[self class] walkingSpeed];
+    [self.walkingSpeedSlider addTarget:self action:@selector(walkingSpeedChanged:) forControlEvents:UIControlEventValueChanged];
     
-    [NSLayoutConstraint activateConstraints:@[
-        [self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-    ]];
-}
-
-- (void)createSliders {
-    // Speed slider
-    self.speedSlider = [[UISlider alloc] init];
-    self.speedSlider.minimumValue = 0.5;
-    self.speedSlider.maximumValue = 8.0;
-    self.speedSlider.value = self.walkingEngine.walkingSpeed;
-    [self.speedSlider addTarget:self action:@selector(speedChanged:) forControlEvents:UIControlEventValueChanged];
+    self.walkingSpeedLabel = [[UILabel alloc] init];
+    [self updateWalkingSpeedLabel];
     
-    self.speedValueLabel = [[UILabel alloc] init];
-    self.speedValueLabel.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
-    self.speedValueLabel.textColor = [UIColor secondaryLabelColor];
-    [self updateSpeedLabel];
+    self.drivingSpeedSlider = [[UISlider alloc] init];
+    self.drivingSpeedSlider.minimumValue = 5.0;
+    self.drivingSpeedSlider.maximumValue = 40.0;
+    self.drivingSpeedSlider.value = [[self class] drivingSpeed];
+    [self.drivingSpeedSlider addTarget:self action:@selector(drivingSpeedChanged:) forControlEvents:UIControlEventValueChanged];
     
-    // Drift slider
-    self.driftSlider = [[UISlider alloc] init];
-    self.driftSlider.minimumValue = 0;
-    self.driftSlider.maximumValue = 10;
-    self.driftSlider.value = self.walkingEngine.driftAmount;
-    [self.driftSlider addTarget:self action:@selector(driftChanged:) forControlEvents:UIControlEventValueChanged];
+    self.drivingSpeedLabel = [[UILabel alloc] init];
+    [self updateDrivingSpeedLabel];
     
-    self.driftValueLabel = [[UILabel alloc] init];
-    self.driftValueLabel.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
-    self.driftValueLabel.textColor = [UIColor secondaryLabelColor];
-    [self updateDriftLabel];
+    // Drift sliders
+    self.driftMinSlider = [[UISlider alloc] init];
+    self.driftMinSlider.minimumValue = 1.0;
+    self.driftMinSlider.maximumValue = 10.0;
+    self.driftMinSlider.value = [[self class] driftMin];
+    [self.driftMinSlider addTarget:self action:@selector(driftMinChanged:) forControlEvents:UIControlEventValueChanged];
     
-    // Min accuracy slider
-    self.minAccuracySlider = [[UISlider alloc] init];
-    self.minAccuracySlider.minimumValue = 5;
-    self.minAccuracySlider.maximumValue = 30;
-    self.minAccuracySlider.value = self.walkingEngine.accuracyMin;
-    [self.minAccuracySlider addTarget:self action:@selector(minAccuracyChanged:) forControlEvents:UIControlEventValueChanged];
+    self.driftMinLabel = [[UILabel alloc] init];
+    [self updateDriftMinLabel];
     
-    self.minAccuracyValueLabel = [[UILabel alloc] init];
-    self.minAccuracyValueLabel.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
-    self.minAccuracyValueLabel.textColor = [UIColor secondaryLabelColor];
-    [self updateMinAccuracyLabel];
+    self.driftMaxSlider = [[UISlider alloc] init];
+    self.driftMaxSlider.minimumValue = 5.0;
+    self.driftMaxSlider.maximumValue = 25.0;
+    self.driftMaxSlider.value = [[self class] driftMax];
+    [self.driftMaxSlider addTarget:self action:@selector(driftMaxChanged:) forControlEvents:UIControlEventValueChanged];
     
-    // Max accuracy slider
-    self.maxAccuracySlider = [[UISlider alloc] init];
-    self.maxAccuracySlider.minimumValue = 30;
-    self.maxAccuracySlider.maximumValue = 100;
-    self.maxAccuracySlider.value = self.walkingEngine.accuracyMax;
-    [self.maxAccuracySlider addTarget:self action:@selector(maxAccuracyChanged:) forControlEvents:UIControlEventValueChanged];
+    self.driftMaxLabel = [[UILabel alloc] init];
+    [self updateDriftMaxLabel];
     
-    self.maxAccuracyValueLabel = [[UILabel alloc] init];
-    self.maxAccuracyValueLabel.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
-    self.maxAccuracyValueLabel.textColor = [UIColor secondaryLabelColor];
-    [self updateMaxAccuracyLabel];
+    // Accuracy sliders
+    self.accuracyMinSlider = [[UISlider alloc] init];
+    self.accuracyMinSlider.minimumValue = 5.0;
+    self.accuracyMinSlider.maximumValue = 30.0;
+    self.accuracyMinSlider.value = [[self class] accuracyMin];
+    [self.accuracyMinSlider addTarget:self action:@selector(accuracyMinChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.accuracyMinLabel = [[UILabel alloc] init];
+    [self updateAccuracyMinLabel];
+    
+    self.accuracyMaxSlider = [[UISlider alloc] init];
+    self.accuracyMaxSlider.minimumValue = 15.0;
+    self.accuracyMaxSlider.maximumValue = 100.0;
+    self.accuracyMaxSlider.value = [[self class] accuracyMax];
+    [self.accuracyMaxSlider addTarget:self action:@selector(accuracyMaxChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.accuracyMaxLabel = [[UILabel alloc] init];
+    [self updateAccuracyMaxLabel];
+    
+    self.accuracyIntervalSlider = [[UISlider alloc] init];
+    self.accuracyIntervalSlider.minimumValue = 5.0;
+    self.accuracyIntervalSlider.maximumValue = 30.0;
+    self.accuracyIntervalSlider.value = [[self class] accuracyUpdateInterval];
+    [self.accuracyIntervalSlider addTarget:self action:@selector(accuracyIntervalChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.accuracyIntervalLabel = [[UILabel alloc] init];
+    [self updateAccuracyIntervalLabel];
+    
+    // Background switches
+    self.backgroundSwitch = [[UISwitch alloc] init];
+    self.backgroundSwitch.on = [[self class] backgroundEnabled];
+    [self.backgroundSwitch addTarget:self action:@selector(backgroundSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.jetsamSwitch = [[UISwitch alloc] init];
+    self.jetsamSwitch.on = [[self class] jetsamProtectionEnabled];
+    [self.jetsamSwitch addTarget:self action:@selector(jetsamSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    // Failsafe
+    self.failsafeSwitch = [[UISwitch alloc] init];
+    self.failsafeSwitch.on = [[self class] failsafeEnabled];
+    [self.failsafeSwitch addTarget:self action:@selector(failsafeSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.failsafeThresholdSlider = [[UISlider alloc] init];
+    self.failsafeThresholdSlider.minimumValue = 100.0;
+    self.failsafeThresholdSlider.maximumValue = 1000.0;
+    self.failsafeThresholdSlider.value = [[self class] failsafeThreshold];
+    [self.failsafeThresholdSlider addTarget:self action:@selector(failsafeThresholdChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.failsafeThresholdLabel = [[UILabel alloc] init];
+    [self updateFailsafeThresholdLabel];
+    
+    // UI switches
+    self.verificationSwitch = [[UISwitch alloc] init];
+    self.verificationSwitch.on = [[self class] verificationEnabled];
+    [self.verificationSwitch addTarget:self action:@selector(verificationSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.hapticSwitch = [[UISwitch alloc] init];
+    self.hapticSwitch.on = [[self class] hapticFeedbackEnabled];
+    [self.hapticSwitch addTarget:self action:@selector(hapticSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    // Mode segment
+    self.modeSegment = [[UISegmentedControl alloc] initWithItems:@[@"Hold", @"Walk", @"Drive"]];
+    self.modeSegment.selectedSegmentIndex = [[self class] defaultMode];
+    [self.modeSegment addTarget:self action:@selector(modeChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    // Auto start
+    self.autoStartSwitch = [[UISwitch alloc] init];
+    self.autoStartSwitch.on = [[self class] autoStartLastLocation];
+    [self.autoStartSwitch addTarget:self action:@selector(autoStartSwitchChanged:) forControlEvents:UIControlEventValueChanged];
 }
 
 #pragma mark - Actions
 
-- (void)doneTapped {
+- (void)dismissSettings {
+    [self.delegate settingsDidChange];
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 
-- (void)speedChanged:(UISlider *)slider {
-    self.walkingEngine.walkingSpeed = slider.value;
-    [self updateSpeedLabel];
+- (void)walkingSpeedChanged:(UISlider *)slider {
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsWalkingSpeed];
+    [self updateWalkingSpeedLabel];
 }
 
-- (void)driftChanged:(UISlider *)slider {
-    self.walkingEngine.driftAmount = slider.value;
-    [self updateDriftLabel];
+- (void)drivingSpeedChanged:(UISlider *)slider {
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsDrivingSpeed];
+    [self updateDrivingSpeedLabel];
 }
 
-- (void)minAccuracyChanged:(UISlider *)slider {
-    self.walkingEngine.accuracyMin = slider.value;
-    [self updateMinAccuracyLabel];
+- (void)driftMinChanged:(UISlider *)slider {
+    // Ensure min <= max
+    if (slider.value > self.driftMaxSlider.value) {
+        slider.value = self.driftMaxSlider.value;
+    }
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsDriftMin];
+    [self updateDriftMinLabel];
 }
 
-- (void)maxAccuracyChanged:(UISlider *)slider {
-    self.walkingEngine.accuracyMax = slider.value;
-    [self updateMaxAccuracyLabel];
+- (void)driftMaxChanged:(UISlider *)slider {
+    // Ensure max >= min
+    if (slider.value < self.driftMinSlider.value) {
+        slider.value = self.driftMinSlider.value;
+    }
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsDriftMax];
+    [self updateDriftMaxLabel];
 }
 
-- (void)presetTapped:(UIButton *)button {
-    double speed = button.tag / 10.0;
-    self.walkingEngine.walkingSpeed = speed;
-    self.speedSlider.value = speed;
-    [self updateSpeedLabel];
+- (void)accuracyMinChanged:(UISlider *)slider {
+    // Ensure min <= max
+    if (slider.value > self.accuracyMaxSlider.value) {
+        slider.value = self.accuracyMaxSlider.value;
+    }
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsAccuracyMin];
+    [self updateAccuracyMinLabel];
 }
 
-- (void)resetTapped {
-    [self.walkingEngine resetAll];
-    [self dismissViewControllerAnimated:YES completion:nil];
+- (void)accuracyMaxChanged:(UISlider *)slider {
+    // Ensure max >= min
+    if (slider.value < self.accuracyMinSlider.value) {
+        slider.value = self.accuracyMinSlider.value;
+    }
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsAccuracyMax];
+    [self updateAccuracyMaxLabel];
+}
+
+- (void)accuracyIntervalChanged:(UISlider *)slider {
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsAccuracyUpdateInterval];
+    [self updateAccuracyIntervalLabel];
+}
+
+- (void)backgroundSwitchChanged:(UISwitch *)sw {
+    [[NSUserDefaults standardUserDefaults] setBool:sw.on forKey:kSettingsBackgroundEnabled];
+}
+
+- (void)jetsamSwitchChanged:(UISwitch *)sw {
+    [[NSUserDefaults standardUserDefaults] setBool:sw.on forKey:kSettingsJetsamProtection];
+}
+
+- (void)failsafeSwitchChanged:(UISwitch *)sw {
+    [[NSUserDefaults standardUserDefaults] setBool:sw.on forKey:kSettingsFailsafeEnabled];
+    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:SettingsSectionFailsafe] withRowAnimation:UITableViewRowAnimationAutomatic];
+}
+
+- (void)failsafeThresholdChanged:(UISlider *)slider {
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsFailsafeThreshold];
+    [self updateFailsafeThresholdLabel];
+}
+
+- (void)verificationSwitchChanged:(UISwitch *)sw {
+    [[NSUserDefaults standardUserDefaults] setBool:sw.on forKey:kSettingsVerificationEnabled];
+}
+
+- (void)hapticSwitchChanged:(UISwitch *)sw {
+    [[NSUserDefaults standardUserDefaults] setBool:sw.on forKey:kSettingsHapticFeedback];
+}
+
+- (void)modeChanged:(UISegmentedControl *)segment {
+    [[NSUserDefaults standardUserDefaults] setInteger:segment.selectedSegmentIndex forKey:kSettingsDefaultMode];
+}
+
+- (void)autoStartSwitchChanged:(UISwitch *)sw {
+    [[NSUserDefaults standardUserDefaults] setBool:sw.on forKey:kSettingsAutoStartLastLocation];
 }
 
 #pragma mark - Label Updates
 
-- (void)updateSpeedLabel {
-    float speed = self.speedSlider.value;
-    NSString *description;
-    
-    if (speed <= 1.0) {
-        description = @"Slow Walk";
-    } else if (speed <= 1.5) {
-        description = @"Walk";
-    } else if (speed <= 2.5) {
-        description = @"Fast Walk";
-    } else if (speed <= 4.0) {
-        description = @"Jog";
-    } else {
-        description = @"Run";
-    }
-    
-    self.speedValueLabel.text = [NSString stringWithFormat:@"%.1f m/s (%@)", speed, description];
+- (void)updateWalkingSpeedLabel {
+    double mps = self.walkingSpeedSlider.value;
+    double mph = mps * 2.237;
+    self.walkingSpeedLabel.text = [NSString stringWithFormat:@"%.1f m/s (%.1f mph)", mps, mph];
+    self.walkingSpeedLabel.textColor = [UIColor secondaryLabelColor];
 }
 
-- (void)updateDriftLabel {
-    self.driftValueLabel.text = [NSString stringWithFormat:@"%.1f m", self.driftSlider.value];
+- (void)updateDrivingSpeedLabel {
+    double mps = self.drivingSpeedSlider.value;
+    double mph = mps * 2.237;
+    self.drivingSpeedLabel.text = [NSString stringWithFormat:@"%.0f m/s (%.0f mph)", mps, mph];
+    self.drivingSpeedLabel.textColor = [UIColor secondaryLabelColor];
 }
 
-- (void)updateMinAccuracyLabel {
-    self.minAccuracyValueLabel.text = [NSString stringWithFormat:@"%.0f m", self.minAccuracySlider.value];
+- (void)updateDriftMinLabel {
+    self.driftMinLabel.text = [NSString stringWithFormat:@"%.0f m", self.driftMinSlider.value];
+    self.driftMinLabel.textColor = [UIColor secondaryLabelColor];
 }
 
-- (void)updateMaxAccuracyLabel {
-    self.maxAccuracyValueLabel.text = [NSString stringWithFormat:@"%.0f m", self.maxAccuracySlider.value];
+- (void)updateDriftMaxLabel {
+    self.driftMaxLabel.text = [NSString stringWithFormat:@"%.0f m", self.driftMaxSlider.value];
+    self.driftMaxLabel.textColor = [UIColor secondaryLabelColor];
+}
+
+- (void)updateAccuracyMinLabel {
+    self.accuracyMinLabel.text = [NSString stringWithFormat:@"%.0f m", self.accuracyMinSlider.value];
+    self.accuracyMinLabel.textColor = [UIColor secondaryLabelColor];
+}
+
+- (void)updateAccuracyMaxLabel {
+    self.accuracyMaxLabel.text = [NSString stringWithFormat:@"%.0f m", self.accuracyMaxSlider.value];
+    self.accuracyMaxLabel.textColor = [UIColor secondaryLabelColor];
+}
+
+- (void)updateAccuracyIntervalLabel {
+    self.accuracyIntervalLabel.text = [NSString stringWithFormat:@"%.0f sec", self.accuracyIntervalSlider.value];
+    self.accuracyIntervalLabel.textColor = [UIColor secondaryLabelColor];
+}
+
+- (void)updateFailsafeThresholdLabel {
+    self.failsafeThresholdLabel.text = [NSString stringWithFormat:@"%.0f m", self.failsafeThresholdSlider.value];
+    self.failsafeThresholdLabel.textColor = [UIColor secondaryLabelColor];
 }
 
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 4; // Movement, Accuracy, Presets, Actions
+    return SettingsSectionCount;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
-        case 0: return 2; // Speed, Drift
-        case 1: return 2; // Min/Max accuracy
-        case 2: return 5; // Presets
-        case 3: return 1; // Reset
+        case SettingsSectionMode: return 1;
+        case SettingsSectionSpeed: return 2;
+        case SettingsSectionDrift: return 2;
+        case SettingsSectionAccuracy: return 3;
+        case SettingsSectionBackground: return 2;
+        case SettingsSectionFailsafe: return self.failsafeSwitch.on ? 2 : 1;
+        case SettingsSectionUI: return 2;
+        case SettingsSectionRouting: return 1;
+        case SettingsSectionReset: return 1;
         default: return 0;
     }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     switch (section) {
-        case 0: return @"Movement";
-        case 1: return @"GPS Accuracy Pulse";
-        case 2: return @"Speed Presets";
-        case 3: return @"Actions";
+        case SettingsSectionMode: return @"Default Mode";
+        case SettingsSectionSpeed: return @"Speed Settings";
+        case SettingsSectionDrift: return @"Drift Settings";
+        case SettingsSectionAccuracy: return @"Accuracy Simulation";
+        case SettingsSectionBackground: return @"Background & Persistence";
+        case SettingsSectionFailsafe: return @"Rubber-Band Failsafe";
+        case SettingsSectionUI: return @"User Interface";
+        case SettingsSectionRouting: return @"Auto Start";
+        case SettingsSectionReset: return nil;
         default: return nil;
     }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     switch (section) {
-        case 0: return @"Drift adds random movement to simulate human walking patterns.";
-        case 1: return @"Simulates the GPS 'blue circle' resizing that happens naturally.";
+        case SettingsSectionMode:
+            return @"The mode to use when app starts.";
+        case SettingsSectionSpeed:
+            return @"Walking: typical human pace. Driving: car speeds for route mode.";
+        case SettingsSectionDrift:
+            return @"Random drift range applied to position. Simulates real GPS behavior.";
+        case SettingsSectionAccuracy:
+            return @"Accuracy circle changes randomly every interval to mimic real iPhone GPS.";
+        case SettingsSectionBackground:
+            return @"Keep spoofing active when app is closed. Jetsam protection prevents iOS from killing the process.";
+        case SettingsSectionFailsafe:
+            return @"Detects if real location 'rubber-bands' back and alerts you. Threshold is distance in meters.";
+        case SettingsSectionUI:
+            return @"Visual and haptic feedback options.";
+        case SettingsSectionRouting:
+            return @"Automatically resume spoofing last location on app launch.";
         default: return nil;
     }
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == 0) {
-        // Movement settings (sliders)
-        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        
-        UIStackView *stack = [[UIStackView alloc] init];
-        stack.axis = UILayoutConstraintAxisVertical;
-        stack.spacing = 8;
-        stack.translatesAutoresizingMaskIntoConstraints = NO;
-        [cell.contentView addSubview:stack];
-        
-        UIStackView *headerStack = [[UIStackView alloc] init];
-        headerStack.axis = UILayoutConstraintAxisHorizontal;
-        headerStack.distribution = UIStackViewDistributionEqualSpacing;
-        
-        UILabel *titleLabel = [[UILabel alloc] init];
-        titleLabel.font = [UIFont systemFontOfSize:17];
-        
-        UISlider *slider;
-        UILabel *valueLabel;
-        
-        if (indexPath.row == 0) {
-            titleLabel.text = @"Walking Speed";
-            slider = self.speedSlider;
-            valueLabel = self.speedValueLabel;
-        } else {
-            titleLabel.text = @"GPS Drift";
-            slider = self.driftSlider;
-            valueLabel = self.driftValueLabel;
+    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    cell.textLabel.font = [UIFont systemFontOfSize:16];
+    
+    switch (indexPath.section) {
+        case SettingsSectionMode: {
+            cell.textLabel.text = @"Default Mode";
+            cell.accessoryView = self.modeSegment;
+            break;
         }
-        
-        [headerStack addArrangedSubview:titleLabel];
-        [headerStack addArrangedSubview:valueLabel];
-        [stack addArrangedSubview:headerStack];
-        [stack addArrangedSubview:slider];
-        
-        [NSLayoutConstraint activateConstraints:@[
-            [stack.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:12],
-            [stack.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
-            [stack.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16],
-            [stack.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-12],
-        ]];
-        
-        return cell;
-        
-    } else if (indexPath.section == 1) {
-        // Accuracy settings
-        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        
-        UIStackView *stack = [[UIStackView alloc] init];
-        stack.axis = UILayoutConstraintAxisVertical;
-        stack.spacing = 8;
-        stack.translatesAutoresizingMaskIntoConstraints = NO;
-        [cell.contentView addSubview:stack];
-        
-        UIStackView *headerStack = [[UIStackView alloc] init];
-        headerStack.axis = UILayoutConstraintAxisHorizontal;
-        headerStack.distribution = UIStackViewDistributionEqualSpacing;
-        
-        UILabel *titleLabel = [[UILabel alloc] init];
-        titleLabel.font = [UIFont systemFontOfSize:17];
-        
-        UISlider *slider;
-        UILabel *valueLabel;
-        
-        if (indexPath.row == 0) {
-            titleLabel.text = @"Minimum Accuracy";
-            slider = self.minAccuracySlider;
-            valueLabel = self.minAccuracyValueLabel;
-        } else {
-            titleLabel.text = @"Maximum Accuracy";
-            slider = self.maxAccuracySlider;
-            valueLabel = self.maxAccuracyValueLabel;
+            
+        case SettingsSectionSpeed: {
+            if (indexPath.row == 0) {
+                cell.textLabel.text = @"Walking Speed";
+                UIStackView *stack = [self sliderStackWithSlider:self.walkingSpeedSlider label:self.walkingSpeedLabel];
+                cell.accessoryView = stack;
+            } else {
+                cell.textLabel.text = @"Driving Speed";
+                UIStackView *stack = [self sliderStackWithSlider:self.drivingSpeedSlider label:self.drivingSpeedLabel];
+                cell.accessoryView = stack;
+            }
+            break;
         }
-        
-        [headerStack addArrangedSubview:titleLabel];
-        [headerStack addArrangedSubview:valueLabel];
-        [stack addArrangedSubview:headerStack];
-        [stack addArrangedSubview:slider];
-        
-        [NSLayoutConstraint activateConstraints:@[
-            [stack.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:12],
-            [stack.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
-            [stack.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16],
-            [stack.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-12],
-        ]];
-        
-        return cell;
-        
-    } else if (indexPath.section == 2) {
-        // Presets
-        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
-        
-        NSArray *presets = @[
-            @{@"emoji": @"🚶", @"name": @"Slow Walk", @"speed": @10},
-            @{@"emoji": @"🚶‍♂️", @"name": @"Normal Walk", @"speed": @14},
-            @{@"emoji": @"🚶‍♀️", @"name": @"Fast Walk", @"speed": @20},
-            @{@"emoji": @"🏃", @"name": @"Jog", @"speed": @35},
-            @{@"emoji": @"🏃‍♂️", @"name": @"Run", @"speed": @60}
-        ];
-        
-        NSDictionary *preset = presets[indexPath.row];
-        cell.textLabel.text = [NSString stringWithFormat:@"%@ %@", preset[@"emoji"], preset[@"name"]];
-        cell.detailTextLabel.text = [NSString stringWithFormat:@"%.1f m/s", [preset[@"speed"] floatValue] / 10.0];
-        cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-        cell.tag = [preset[@"speed"] integerValue];
-        
-        return cell;
-        
-    } else {
-        // Reset
-        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-        cell.textLabel.text = @"Reset All";
-        cell.textLabel.textColor = [UIColor systemRedColor];
-        cell.textLabel.textAlignment = NSTextAlignmentCenter;
-        return cell;
+            
+        case SettingsSectionDrift: {
+            if (indexPath.row == 0) {
+                cell.textLabel.text = @"Minimum Drift";
+                UIStackView *stack = [self sliderStackWithSlider:self.driftMinSlider label:self.driftMinLabel];
+                cell.accessoryView = stack;
+            } else {
+                cell.textLabel.text = @"Maximum Drift";
+                UIStackView *stack = [self sliderStackWithSlider:self.driftMaxSlider label:self.driftMaxLabel];
+                cell.accessoryView = stack;
+            }
+            break;
+        }
+            
+        case SettingsSectionAccuracy: {
+            if (indexPath.row == 0) {
+                cell.textLabel.text = @"Min Accuracy";
+                UIStackView *stack = [self sliderStackWithSlider:self.accuracyMinSlider label:self.accuracyMinLabel];
+                cell.accessoryView = stack;
+            } else if (indexPath.row == 1) {
+                cell.textLabel.text = @"Max Accuracy";
+                UIStackView *stack = [self sliderStackWithSlider:self.accuracyMaxSlider label:self.accuracyMaxLabel];
+                cell.accessoryView = stack;
+            } else {
+                cell.textLabel.text = @"Update Interval";
+                UIStackView *stack = [self sliderStackWithSlider:self.accuracyIntervalSlider label:self.accuracyIntervalLabel];
+                cell.accessoryView = stack;
+            }
+            break;
+        }
+            
+        case SettingsSectionBackground: {
+            if (indexPath.row == 0) {
+                cell.textLabel.text = @"Background Spoofing";
+                cell.accessoryView = self.backgroundSwitch;
+            } else {
+                cell.textLabel.text = @"Jetsam Protection";
+                cell.accessoryView = self.jetsamSwitch;
+            }
+            break;
+        }
+            
+        case SettingsSectionFailsafe: {
+            if (indexPath.row == 0) {
+                cell.textLabel.text = @"Enable Failsafe";
+                cell.accessoryView = self.failsafeSwitch;
+            } else {
+                cell.textLabel.text = @"Threshold";
+                UIStackView *stack = [self sliderStackWithSlider:self.failsafeThresholdSlider label:self.failsafeThresholdLabel];
+                cell.accessoryView = stack;
+            }
+            break;
+        }
+            
+        case SettingsSectionUI: {
+            if (indexPath.row == 0) {
+                cell.textLabel.text = @"Verification Banner";
+                cell.accessoryView = self.verificationSwitch;
+            } else {
+                cell.textLabel.text = @"Haptic Feedback";
+                cell.accessoryView = self.hapticSwitch;
+            }
+            break;
+        }
+            
+        case SettingsSectionRouting: {
+            cell.textLabel.text = @"Resume Last Location";
+            cell.accessoryView = self.autoStartSwitch;
+            break;
+        }
+            
+        case SettingsSectionReset: {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+            cell.textLabel.text = @"Reset to Defaults";
+            cell.textLabel.textColor = [UIColor systemRedColor];
+            cell.textLabel.textAlignment = NSTextAlignmentCenter;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            break;
+        }
     }
+    
+    return cell;
+}
+
+- (UIStackView *)sliderStackWithSlider:(UISlider *)slider label:(UILabel *)label {
+    label.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightRegular];
+    label.textAlignment = NSTextAlignmentRight;
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    [label setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [label.widthAnchor constraintGreaterThanOrEqualToConstant:80].active = YES;
+    
+    slider.translatesAutoresizingMaskIntoConstraints = NO;
+    [slider.widthAnchor constraintEqualToConstant:120].active = YES;
+    
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[slider, label]];
+    stack.axis = UILayoutConstraintAxisHorizontal;
+    stack.spacing = 8;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.frame = CGRectMake(0, 0, 220, 44);
+    
+    return stack;
 }
 
 #pragma mark - UITableViewDelegate
@@ -350,32 +664,24 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
-    if (indexPath.section == 2) {
-        // Preset selected
-        UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
-        double speed = cell.tag / 10.0;
-        self.walkingEngine.walkingSpeed = speed;
-        self.speedSlider.value = speed;
-        [self updateSpeedLabel];
-        [tableView reloadSections:[NSIndexSet indexSetWithIndex:0] withRowAnimation:UITableViewRowAnimationNone];
-    } else if (indexPath.section == 3) {
-        // Reset
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Reset All?" 
-                                                                       message:@"This will stop walking and clear all destinations." 
+    if (indexPath.section == SettingsSectionReset) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Reset Settings"
+                                                                       message:@"This will reset all settings to their default values."
                                                                 preferredStyle:UIAlertControllerStyleAlert];
+        
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
         [alert addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-            [self resetTapped];
+            [[self class] resetToDefaults];
+            [self setupControls];
+            [self.tableView reloadData];
         }]];
+        
         [self presentViewController:alert animated:YES completion:nil];
     }
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == 0 || indexPath.section == 1) {
-        return 80; // Slider cells
-    }
-    return UITableViewAutomaticDimension;
+    return 52;
 }
 
 @end
