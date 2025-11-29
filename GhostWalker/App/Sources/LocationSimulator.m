@@ -67,12 +67,13 @@ static LocationSimulator *_sharedSimulator = nil;
         }
         
         // Default settings
+        // Less aggressive updates since CLSimulationManager holds location with repeatBehavior=1
         _accuracyMin = 10.0;
         _accuracyMax = 45.0;
-        _accuracyUpdateInterval = 10.0;
+        _accuracyUpdateInterval = 10.0;  // Change accuracy every 10s
         _driftMin = 2.0;
         _driftMax = 5.0;
-        _updateInterval = 1.0;
+        _updateInterval = 3.0;  // Update drift every 3s (not 1s - less aggressive)
         
         _isSimulating = NO;
         _updateCount = 0;
@@ -120,33 +121,43 @@ static LocationSimulator *_sharedSimulator = nil;
     self.updateCount = 0;
     self.startTime = [NSDate date];
     
-    // Try CLSimulationManager first
+    // Try CLSimulationManager first (DIRECT API - like Geranium)
     if (self.simManager) {
         @try {
-            // Configure simulation behavior
+            // Configure simulation behavior (CRITICAL - same as Geranium!)
+            // locationRepeatBehavior = 1 means: repeat last location forever
+            // This is why we DON'T need continuous timer updates!
             self.simManager.locationDeliveryBehavior = 2;  // Immediate delivery
-            self.simManager.locationRepeatBehavior = 1;     // Repeat last location
+            self.simManager.locationRepeatBehavior = 1;     // Repeat last location (KEY!)
             
             // Stop any existing simulation
             [self.simManager stopLocationSimulation];
             [self.simManager clearSimulatedLocations];
             
+            // Apply initial drift to the location
+            CLLocationCoordinate2D driftedLocation = [self applyDriftTo:location];
+            self.currentLocation = driftedLocation;
+            
             // Create CLLocation with our parameters
-            CLLocation *simLocation = [self createLocationWithCoordinate:location 
+            CLLocation *simLocation = [self createLocationWithCoordinate:driftedLocation 
                                                                 accuracy:accuracy 
                                                                    speed:speed 
                                                                   course:course];
             
-            // Append and start
+            // Append and start - Geranium style!
             [self.simManager appendSimulatedLocation:simLocation];
             [self.simManager flush];
             [self.simManager startLocationSimulation];
             
             self.isSimulating = YES;
             
-            NSLog(@"[GhostWalker] CLSimulationManager started successfully!");
+            NSLog(@"[GhostWalker] ✅ CLSimulationManager started successfully!");
+            NSLog(@"[GhostWalker] Location will persist with repeatBehavior=1");
             
-            // Start update timer for continuous drift
+            // Start LIGHTWEIGHT update timer for drift/accuracy variation
+            // This is our enhancement over Geranium - realistic GPS behavior!
+            // Note: We DON'T call clearSimulatedLocations in the timer
+            // We just append new locations to the queue
             [self startUpdateTimer];
             [self startAccuracyTimer];
             
@@ -158,11 +169,11 @@ static LocationSimulator *_sharedSimulator = nil;
             return YES;
         }
         @catch (NSException *exception) {
-            NSLog(@"[GhostWalker] CLSimulationManager exception: %@", exception);
+            NSLog(@"[GhostWalker] ❌ CLSimulationManager exception: %@", exception);
         }
     }
     
-    // Fallback to locsim CLI
+    // Fallback to locsim CLI (uses same CLSimulationManager internally)
     return [self startWithLocSimCLI:location accuracy:accuracy speed:speed course:course];
 }
 
@@ -271,9 +282,15 @@ static LocationSimulator *_sharedSimulator = nil;
                                                                    speed:speed 
                                                                   course:course];
             
-            [self.simManager clearSimulatedLocations];
+            // KEY INSIGHT from Geranium analysis:
+            // We DON'T need to clear and restart! Just append new location.
+            // With repeatBehavior=1, it will use the new location.
+            // Calling clear+start repeatedly was causing instability!
             [self.simManager appendSimulatedLocation:simLocation];
             [self.simManager flush];
+            
+            NSLog(@"[GhostWalker] Updated to: %f, %f (acc: %.1fm)", 
+                  driftedLocation.latitude, driftedLocation.longitude, accuracy);
         }
         @catch (NSException *exception) {
             NSLog(@"[GhostWalker] Update exception: %@", exception);

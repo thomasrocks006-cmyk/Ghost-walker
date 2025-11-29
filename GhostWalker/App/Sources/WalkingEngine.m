@@ -660,11 +660,12 @@ static NSString *const kPersistPath = @"/var/mobile/Library/Preferences/com.ghos
     [task resume];
 }
 
-#pragma mark - JSON File Operations (Now uses CLSimulationManager!)
+#pragma mark - Location Updates (Now uses CLSimulationManager!)
 
 - (void)writeLocationToJSON:(double)lat lon:(double)lon alt:(double)alt accuracy:(double)accuracy course:(double)course speed:(double)speed {
     
     // PRIMARY: Use CLSimulationManager via LocationSimulator
+    // This is the same API that locsim and Geranium use!
     LocationSimulator *sim = [LocationSimulator sharedSimulator];
     CLLocationCoordinate2D location = CLLocationCoordinate2DMake(lat, lon);
     
@@ -685,41 +686,15 @@ static NSString *const kPersistPath = @"/var/mobile/Library/Preferences/com.ghos
         sim.currentCourse = course;
     }
     
-    // LEGACY: Also write JSON for backwards compatibility with tweak
-    // (in case someone has older tweak version)
-    NSDictionary *locationData = @{
-        @"lat": @(lat),
-        @"lon": @(lon),
-        @"alt": @(alt),
-        @"accuracy": @(accuracy),
-        @"verticalAccuracy": @(accuracy),
-        @"course": @(course),
-        @"speed": @(speed),
-        @"timestamp": @([[NSDate date] timeIntervalSince1970]),
-        @"updateCount": @(self.updateCount),
-        @"mode": @(self.movementMode),
-        @"isMoving": @(self.isMoving)
-    };
-    
-    NSError *error;
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:locationData options:0 error:&error];
-    if (error) return;
-    
-    NSString *directory = [kJSONPath stringByDeletingLastPathComponent];
-    [[NSFileManager defaultManager] createDirectoryAtPath:directory
-                              withIntermediateDirectories:YES
-                                               attributes:nil
-                                                    error:nil];
-    
-    [jsonData writeToFile:kJSONPath atomically:YES];
+    // NOTE: We removed JSON file writing because we no longer use the tweak!
+    // CLSimulationManager handles everything natively via XPC to locationd
 }
 
 - (void)clearJSONFile {
     // Stop CLSimulationManager
     [[LocationSimulator sharedSimulator] stopSimulating];
     
-    // Also clear legacy JSON
-    [[NSFileManager defaultManager] removeItemAtPath:kJSONPath error:nil];
+    // NOTE: No longer clearing JSON file since we don't use tweak anymore
 }
 
 #pragma mark - Persistence (Background Survival)
