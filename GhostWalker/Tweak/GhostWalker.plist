@@ -1,1 +1,18 @@
-{ Filter = { Bundles = ( "com.apple.locationd", "com.apple.CoreLocation", "com.apple.springboard" ); }; }
+{
+    Filter = {
+        Executables = (
+            "locationd",
+            "SpringBoard",
+            "findmyd",
+            "fmfd"
+        );
+        Bundles = (
+            "com.apple.springboard",
+            "com.apple.findmy",
+            "com.apple.mobileme.fmf1",
+            "com.apple.Maps",
+            "com.apple.MobileSMS",
+            "com.apple.weather"
+        );
+    };
+}

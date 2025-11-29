@@ -22,11 +22,15 @@
 // MARK: - Configuration
 // ============================================================================
 
-#define GHOST_LIVE_JSON @"/var/mobile/Library/Preferences/com.ghostwalker.live.json"
+// Multiple paths for rootless compatibility
+// locationd sandbox may restrict access to certain paths
+#define GHOST_LIVE_JSON_PRIMARY @"/var/mobile/Library/Preferences/com.ghostwalker.live.json"
+#define GHOST_LIVE_JSON_ROOTLESS @"/var/jb/var/mobile/Library/Preferences/com.ghostwalker.live.json"
+#define GHOST_LIVE_JSON_TMP @"/tmp/com.ghostwalker.live.json"
 #define GHOST_PERSIST_JSON @"/var/mobile/Library/Preferences/com.ghostwalker.persist.json"
-#define GHOST_MAX_STALE_TIME 30.0      // Seconds before live data is stale
+#define GHOST_MAX_STALE_TIME 90.0      // Seconds before live data is stale (increased for reliability)
 #define GHOST_PERSIST_MAX_AGE 3600.0   // 1 hour max for persist data
-#define GHOST_READ_RATE_LIMIT 0.1      // Min seconds between file reads
+#define GHOST_READ_RATE_LIMIT 0.05     // Min seconds between file reads (faster)
 
 // ============================================================================
 // MARK: - Spoofed Location Data Structure
@@ -126,8 +130,19 @@ static GhostLocation getGhostLocation(void) {
     
     g_lastReadTime = now;
     
-    // Try 1: Live JSON (app is actively writing)
-    g_liveLocation = parseJSONFile(GHOST_LIVE_JSON, GHOST_MAX_STALE_TIME);
+    // Try multiple paths for rootless compatibility
+    // Path 1: Standard mobile preferences
+    g_liveLocation = parseJSONFile(GHOST_LIVE_JSON_PRIMARY, GHOST_MAX_STALE_TIME);
+    
+    if (!g_liveLocation.isValid) {
+        // Path 2: Rootless /var/jb path
+        g_liveLocation = parseJSONFile(GHOST_LIVE_JSON_ROOTLESS, GHOST_MAX_STALE_TIME);
+    }
+    
+    if (!g_liveLocation.isValid) {
+        // Path 3: /tmp fallback (sandbox-friendly)
+        g_liveLocation = parseJSONFile(GHOST_LIVE_JSON_TMP, GHOST_MAX_STALE_TIME);
+    }
     
     if (g_liveLocation.isValid) {
         // Cache as last known good
@@ -135,7 +150,7 @@ static GhostLocation getGhostLocation(void) {
         return g_liveLocation;
     }
     
-    // Try 2: Persist JSON (app closed but was spoofing)
+    // Try persist JSON paths
     g_persistLocation = parseJSONFile(GHOST_PERSIST_JSON, GHOST_PERSIST_MAX_AGE);
     
     if (g_persistLocation.isValid) {
@@ -321,8 +336,29 @@ static CLLocation* createSpoofedLocation(GhostLocation ghostLoc) {
                   g_persistLocation.latitude, g_persistLocation.longitude);
         }
         
-        NSLog(@"[GhostWalker] Tweak v2.0 loaded!");
-        NSLog(@"[GhostWalker] Live JSON: %@", GHOST_LIVE_JSON);
-        NSLog(@"[GhostWalker] Persist JSON: %@", GHOST_PERSIST_JSON);
+        // Try to load from any available path
+        GhostLocation testLoc = parseJSONFile(GHOST_LIVE_JSON_PRIMARY, 9999);
+        if (testLoc.isValid) {
+            NSLog(@"[GhostWalker] Found config at PRIMARY path: %@", GHOST_LIVE_JSON_PRIMARY);
+        } else {
+            NSLog(@"[GhostWalker] No config at PRIMARY: %@", GHOST_LIVE_JSON_PRIMARY);
+        }
+        
+        testLoc = parseJSONFile(GHOST_LIVE_JSON_ROOTLESS, 9999);
+        if (testLoc.isValid) {
+            NSLog(@"[GhostWalker] Found config at ROOTLESS path: %@", GHOST_LIVE_JSON_ROOTLESS);
+        } else {
+            NSLog(@"[GhostWalker] No config at ROOTLESS: %@", GHOST_LIVE_JSON_ROOTLESS);
+        }
+        
+        testLoc = parseJSONFile(GHOST_LIVE_JSON_TMP, 9999);
+        if (testLoc.isValid) {
+            NSLog(@"[GhostWalker] Found config at TMP path: %@", GHOST_LIVE_JSON_TMP);
+        } else {
+            NSLog(@"[GhostWalker] No config at TMP: %@", GHOST_LIVE_JSON_TMP);
+        }
+        
+        NSLog(@"[GhostWalker] Tweak v2.1 loaded! (Multi-path support)");
+        NSLog(@"[GhostWalker] Checking paths: PRIMARY, ROOTLESS, TMP");
     }
 }

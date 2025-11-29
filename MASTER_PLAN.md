@@ -10,16 +10,21 @@
 
 | Component | Status | Version |
 |-----------|--------|--------|
-| App (UIKit) | ✅ Built | 2.0.0 |
-| Tweak (Logos) | ✅ Built | 2.0.0 |
-| .deb Package | ✅ Ready | 2.0.0 |
+| App (UIKit) | ✅ Built | 2.1.0 |
+| Tweak (Logos) | ✅ Built | 2.1.0 |
+| .deb Package | ✅ Ready | 2.1.0 |
 | Sileo Repo | ✅ Updated | Live |
-| Device Install | ✅ Installed | Testing |
-| Map Loading | ⚠️ Issue | Debugging |
+| Device Install | ⚠️ Testing | locationd injection issue |
+| Tweak Injection | ⚠️ Partial | SpringBoard works, locationd fails |
 
 **Repo URL:** `https://raw.githubusercontent.com/thomasrocks006-cmyk/Ghost-walker/main/repo/`
 
-**Direct .deb:** `repo/debs/com.ghostwalker.app_2.0.0_iphoneos-arm64.deb`
+**Direct .deb:** `repo/debs/com.ghostwalker.app_2.1.0_iphoneos-arm64.deb`
+
+**v2.1.0 Changes:**
+- Multi-path JSON support (checks /var/mobile, /var/jb/var/mobile, /tmp)
+- Executables filter for locationd daemon injection
+- Enhanced logging for path debugging
 
 **Debug Docs:**
 - `DEVICE_TESTING.md` - Installation diagnostics
