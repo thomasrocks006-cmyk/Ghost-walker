@@ -76,6 +76,20 @@
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     [self.locationManager requestAlwaysAuthorization];
+    [self.locationManager startUpdatingLocation];
+    
+    // FALLBACK: If no location after 3 seconds, center on default location
+    // This prevents a blank map if GPS is slow or permissions are delayed
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (!self.hasInitializedMap) {
+            NSLog(@"[GhostWalker] No GPS received, centering on default location (San Francisco)");
+            // Default to San Francisco
+            CLLocationCoordinate2D defaultLocation = CLLocationCoordinate2DMake(37.7749, -122.4194);
+            MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(defaultLocation, 5000, 5000);
+            [self.mapView setRegion:region animated:YES];
+            self.hasInitializedMap = YES;
+        }
+    });
 }
 
 - (void)dealloc {

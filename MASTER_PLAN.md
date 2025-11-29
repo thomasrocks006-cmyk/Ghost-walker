@@ -1,6 +1,6 @@
 # 👻 Ghost Walker - Master Development Document
 
-## Version: 2.1.0 
+## Version: 3.0.1 
 ## Target Device: iPhone 7, iOS 15.8.5, Dopamine Rootless Jailbreak
 ## Last Updated: November 29, 2025
 
@@ -146,21 +146,22 @@ static void start_loc_sim(CLLocation *loc, int delivery, int repeat){
 
 | Component | Status | Version |
 |-----------|--------|--------|
-| App (UIKit) | ✅ Built | 2.1.0 |
-| Tweak (Logos) | ✅ Built | 2.1.0 |
-| .deb Package | ✅ Ready | 2.1.0 |
+| App (UIKit) | ✅ Built | 3.0.1 |
+| Tweak (Logos) | ✅ Built | 3.0.1 |
+| .deb Package | ✅ Ready | 3.0.1 |
 | Sileo Repo | ✅ Updated | Live |
-| Device Install | ⚠️ Testing | locationd injection issue |
-| Tweak Injection | ⚠️ Partial | SpringBoard works, locationd fails |
+| Device Install | ✅ Works | CLSimulationManager method |
+| CLSimulationManager | ✅ Primary | No tweak injection needed |
 
 **Repo URL:** `https://raw.githubusercontent.com/thomasrocks006-cmyk/Ghost-walker/main/repo/`
 
-**Direct .deb:** `repo/debs/com.ghostwalker.app_2.1.0_iphoneos-arm64.deb`
+**Direct .deb:** `repo/debs/com.ghostwalker.app_3.0.1_iphoneos-arm64.deb`
 
-**v2.1.0 Changes:**
-- Multi-path JSON support (checks /var/mobile, /var/jb/var/mobile, /tmp)
-- Executables filter for locationd daemon injection
-- Enhanced logging for path debugging
+**v3.0.1 Changes:**
+- Uses CLSimulationManager (Apple's native location simulation API)
+- No tweak injection needed for core functionality!
+- Falls back to locsim CLI if CLSimulationManager unavailable
+- Tweak still included for additional hooks (optional)
 
 **Debug Docs:**
 - `DEVICE_TESTING.md` - Installation diagnostics
