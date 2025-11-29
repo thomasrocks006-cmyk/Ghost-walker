@@ -1,8 +1,144 @@
 # 👻 Ghost Walker - Master Development Document
 
-## Version: 2.0.0 RELEASED ✅
+## Version: 2.1.0 
 ## Target Device: iPhone 7, iOS 15.8.5, Dopamine Rootless Jailbreak
-## Last Updated: November 28, 2025 - 17:25 UTC
+## Last Updated: November 29, 2025
+
+---
+
+# 🚨 CRITICAL SITUATION - PLAN A/B/C
+
+## Current Status
+- **App**: ✅ Installs, launches, map displays
+- **Tweak**: ⚠️ Loads in SpringBoard, **FAILS to load in locationd**
+- **Root Cause**: ElleKit (Dopamine's substrate) may not inject into daemons reliably
+
+## Troubleshooting Plan
+
+### PLAN A: Test v2.1.0 (Current)
+Test the current build with:
+1. Executables filter for `locationd`
+2. Multi-path JSON (/var/mobile, /var/jb/var/mobile, /tmp)
+
+**Steps:**
+```bash
+# On device after installing v2.1.0
+killall -9 locationd
+cat /var/jb/Library/MobileSubstrate/DynamicLibraries/GhostWalker.plist
+# Should show: Executables = ("locationd", "SpringBoard", ...)
+```
+
+### PLAN B: Fallback Methods (If A fails)
+
+#### B1: Launch Daemon Force Injection
+Create a launchd plist that forces DYLD_INSERT_LIBRARIES:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ghostwalker.locationd-inject</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/sbin/locationd</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DYLD_INSERT_LIBRARIES</key>
+        <string>/var/jb/Library/MobileSubstrate/DynamicLibraries/GhostWalker.dylib</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+```
+
+#### B2: /tmp Path Workaround
+locationd sandbox always allows /tmp access:
+```bash
+# Write JSON to /tmp
+echo '{"lat":37.7749,"lon":-122.4194,"timestamp":1234567890}' > /tmp/com.ghostwalker.live.json
+```
+
+#### B3: Copy locationd Entitlements
+```bash
+ldid -e /usr/libexec/locationd > /tmp/locationd.ent
+ldid -S/tmp/locationd.ent /var/jb/Library/MobileSubstrate/DynamicLibraries/GhostWalker.dylib
+killall -9 locationd
+```
+
+### PLAN C: Use CLSimulationManager (Golden Standard!) 🌟
+
+**This is how LocSim and Geranium ACTUALLY work!**
+
+They use Apple's **private CLSimulationManager API** which communicates with locationd via XPC - **NO tweak injection needed!**
+
+**Key Discovery from locsim source code:**
+```objc
+@interface CLSimulationManager : NSObject
+@property (assign,nonatomic) uint8_t locationDeliveryBehavior;
+@property (assign,nonatomic) uint8_t locationRepeatBehavior;
+-(void)clearSimulatedLocations;
+-(void)startLocationSimulation;
+-(void)stopLocationSimulation;
+-(void)appendSimulatedLocation:(id)arg1;
+-(void)flush;
+-(void)loadScenarioFromURL:(id)arg1;
+@end
+```
+
+**How LocSim works:**
+```objc
+static void start_loc_sim(CLLocation *loc, int delivery, int repeat){
+    CLSimulationManager *simManager = [[CLSimulationManager alloc] init];
+    if (delivery >= 0) simManager.locationDeliveryBehavior = (uint8_t)delivery;
+    if (repeat >= 0) simManager.locationRepeatBehavior = (uint8_t)repeat;
+    [simManager stopLocationSimulation];
+    [simManager clearSimulatedLocations];
+    [simManager appendSimulatedLocation:loc];
+    [simManager flush];
+    [simManager startLocationSimulation];
+}
+```
+
+**Plan C Implementation Options:**
+
+**C1: Direct Integration**
+- Add CLSimulationManager to our app
+- Call it directly from Ghost Walker UI
+- No tweak needed at all!
+
+**C2: Wrap LocSim**
+- Use `locsim` CLI from our app via NSTask
+- Already installed and working on device
+- Just call: `locsim start <lat> <lon>`
+
+**C3: Hybrid Approach**
+- Use CLSimulationManager for core spoofing
+- Keep tweak for additional hooks (Find My, etc.)
+- Best of both worlds
+
+---
+
+# 📊 TROUBLESHOOTING LOG (From Device Agent)
+
+## Confirmed Findings
+1. ✅ SpringBoard injection works - logs show "Tweak v2.0 loaded!"
+2. ❌ locationd injection fails - no GhostWalker logs in locationd
+3. ✅ Manual injection works - `DYLD_INSERT_LIBRARIES=... /usr/bin/ls` succeeds
+4. ⚠️ Dependency path fixed - changed from `/usr/lib/libsubstrate.dylib` to `/var/jb/usr/lib/libellekit.dylib`
+5. ⚠️ Plist format converted - binary format didn't help
+
+## Agent Task History
+- Verified installation paths
+- Fixed icon cache
+- Added location permission keys
+- Fixed bundle filter
+- Tested multiple injection methods
+- Confirmed ElleKit is the limiter
 
 ---
 
@@ -125,23 +261,64 @@ Based on observation of real iPhone behavior:
 }
 ```
 
-## 2.3 Why NOT Using LocSim
+## 2.3 Why NOT Using LocSim (OUTDATED - Plan C Reconsiders This!)
 
 You have `locsim` (1.1.8-1) installed. Here's the comparison:
 
-| Feature | LocSim | Ghost Walker |
-|---------|--------|--------------|
-| Method | Sets location once via CLI | Continuous updates via tweak |
-| Drift simulation | ❌ None | ✅ Brownian motion |
-| Accuracy pulsing | ❌ None | ✅ Circle changes periodically |
-| Route walking | ❌ None | ✅ OSRM routing |
-| Background persistence | ❌ Stops | ✅ Tweak keeps running |
-| Find My realism | ❌ Static dot | ✅ Live moving dot |
-| Speed control | ❌ None | ✅ Walk/drive modes |
+| Feature | LocSim | Ghost Walker (Tweak) | Ghost Walker (Plan C) |
+|---------|--------|--------------|----------------------|
+| Method | CLSimulationManager | Tweak injection | CLSimulationManager |
+| Drift simulation | ❌ None | ✅ Brownian motion | ✅ Brownian motion |
+| Accuracy pulsing | ❌ None | ✅ Circle changes | ✅ Circle changes |
+| Route walking | ❌ None (but GPX) | ✅ OSRM routing | ✅ OSRM routing |
+| Background persistence | ✅ Native! | ⚠️ Tweak fallback | ✅ Native! |
+| Find My realism | ❌ Static dot | ✅ Live moving dot | ✅ Live moving dot |
+| locationd injection | ❌ NOT NEEDED | ❌ Problematic | ❌ NOT NEEDED |
+| Daemon compatibility | ✅ Works always | ⚠️ ElleKit issues | ✅ Works always |
 
-**Verdict:** LocSim is CLI-based for quick one-off spoofs. Ghost Walker provides the realistic "live location" look that Find My expects.
+**NEW VERDICT:** Plan C (CLSimulationManager) gives us the reliability of LocSim with our custom UI and features!
 
-**However:** We could potentially USE locsim as a fallback or integration point. It's already installed and working.
+**LocSim Integration Strategy:**
+Since locsim already works on the device, we can:
+1. Call CLSimulationManager directly (best)
+2. Wrap locsim CLI via NSTask (easy fallback)
+3. Keep tweak only for per-app hooks (optional)
+
+---
+
+## 2.4 NEW ARCHITECTURE: CLSimulationManager (Plan C)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    GHOST WALKER (PLAN C)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────┐         ┌─────────────────────┐        │
+│  │                     │   XPC   │                     │        │
+│  │    GhostWalker      │ ──────► │    locationd        │        │
+│  │       APP           │         │    (Apple daemon)   │        │
+│  │   (UIKit/Obj-C)     │         │                     │        │
+│  │                     │         └─────────────────────┘        │
+│  │  CLSimulationManager│                   │                     │
+│  │  - appendSimulated  │                   │ Provides spoofed    │
+│  │  - startSimulation  │                   │ location to ALL     │
+│  │  - loop with timer  │                   ▼                     │
+│  └─────────────────────┘         ┌─────────────────────┐        │
+│                                  │   All Apps          │        │
+│  NO TWEAK INJECTION NEEDED!      │   - Find My ✅      │        │
+│  Uses Apple's native API         │   - Maps ✅         │        │
+│                                  │   - Any app ✅      │        │
+│                                  └─────────────────────┘        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Benefits:**
+- No daemon injection issues
+- Works on ALL jailbreaks
+- Apple's own simulation system
+- Survives app closure (if we loop properly)
+- Proven to work (LocSim uses this!)
 
 ---
 
