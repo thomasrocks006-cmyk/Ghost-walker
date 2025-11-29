@@ -7,6 +7,7 @@
 
 #import "MainViewController.h"
 #import "WalkingEngine.h"
+#import "LocationSimulator.h"
 #import "DestinationSearchController.h"
 #import "SettingsViewController.h"
 
@@ -799,6 +800,11 @@
     self.walkingEngine.accuracyMax = [SettingsViewController accuracyMax];
     self.walkingEngine.accuracyUpdateInterval = [SettingsViewController accuracyUpdateInterval];
     self.walkingEngine.maxJumpDistance = [SettingsViewController failsafeThreshold];
+    
+    // Altitude settings - applied to LocationSimulator
+    LocationSimulator *sim = [LocationSimulator sharedSimulator];
+    sim.altitude = [SettingsViewController altitude];
+    sim.altitudeEnabled = [SettingsViewController altitudeEnabled];
     
     [self updateUI];
 }

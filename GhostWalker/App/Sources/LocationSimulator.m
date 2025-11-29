@@ -75,6 +75,9 @@ static LocationSimulator *_sharedSimulator = nil;
         _driftMax = 5.0;
         _updateInterval = 3.0;  // Update drift every 3s (not 1s - less aggressive)
         
+        _altitude = 0.0;
+        _altitudeEnabled = NO;
+        
         _isSimulating = NO;
         _updateCount = 0;
         _currentAccuracy = 25.0;
@@ -431,8 +434,11 @@ static LocationSimulator *_sharedSimulator = nil;
                                        speed:(double)speed 
                                       course:(double)course {
     
+    // Use custom altitude if enabled, otherwise 0
+    double alt = self.altitudeEnabled ? self.altitude : 0.0;
+    
     CLLocation *location = [[CLLocation alloc] initWithCoordinate:coordinate
-                                                         altitude:0
+                                                         altitude:alt
                                                horizontalAccuracy:accuracy
                                                  verticalAccuracy:accuracy
                                                            course:course

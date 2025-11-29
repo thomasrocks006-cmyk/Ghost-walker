@@ -46,6 +46,10 @@
 @property (nonatomic, assign) double driftMin;         // Default 2m
 @property (nonatomic, assign) double driftMax;         // Default 5m
 
+// Altitude settings (meters)
+@property (nonatomic, assign) double altitude;         // Default 0
+@property (nonatomic, assign) BOOL altitudeEnabled;    // Default NO
+
 // Update interval (seconds)
 @property (nonatomic, assign) double updateInterval;   // Default 1.0
 

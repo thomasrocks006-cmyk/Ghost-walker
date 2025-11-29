@@ -1,14 +1,14 @@
 Package: com.ghostwalker.app
-Version: 3.0.1
+Version: 3.0.2
 Architecture: iphoneos-arm64
 Maintainer: Ghost Walker Dev
 Installed-Size: 300
 Depends: firmware (>= 15.0)
-Filename: debs/com.ghostwalker.app_3.0.1_iphoneos-arm64.deb
-Size: 51468
-MD5sum: 080379ac5e0a1cfa00ec836b6c8a17d3
-SHA1: bb98f576b5f7e3bbea2e8e34e25279de838e884a
-SHA256: 8a5f41eea928fbc2de0243a0ca445a9c9265eb67b8d7ce5ca2143b89a571d340
+Filename: debs/com.ghostwalker.app_3.0.2_iphoneos-arm64.deb
+Size: 52408
+MD5sum: f43e703a083675571be4dd2393569d5b
+SHA1: ebaab403c86eaf7e57e64d9d19f117c5de012a34
+SHA256: 83fdb4541240264aa9b3e99aa4b9c713beae21d8e736daec3c9e36bb714dfe48
 Section: Tweaks
 Description: Advanced location spoofing suite for iOS 15+. v3.0 uses Apple CLSimulationManager API (same as locsim) - NO tweak injection needed! Accuracy drift, route walking/driving, persistent spoofing.
 Author: Ghost Walker Dev

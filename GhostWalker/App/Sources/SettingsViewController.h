@@ -26,6 +26,8 @@ extern NSString * const kSettingsVerificationEnabled;
 extern NSString * const kSettingsHapticFeedback;
 extern NSString * const kSettingsRouteProvider;
 extern NSString * const kSettingsAutoStartLastLocation;
+extern NSString * const kSettingsAltitude;
+extern NSString * const kSettingsAltitudeEnabled;
 
 @protocol SettingsViewControllerDelegate <NSObject>
 - (void)settingsDidChange;
@@ -52,6 +54,8 @@ extern NSString * const kSettingsAutoStartLastLocation;
 + (BOOL)hapticFeedbackEnabled;
 + (NSString *)routeProvider;
 + (BOOL)autoStartLastLocation;
++ (double)altitude;
++ (BOOL)altitudeEnabled;
 
 // Reset to defaults
 + (void)resetToDefaults;

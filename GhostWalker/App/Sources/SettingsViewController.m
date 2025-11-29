@@ -24,6 +24,8 @@ NSString * const kSettingsVerificationEnabled = @"verificationEnabled";
 NSString * const kSettingsHapticFeedback = @"hapticFeedback";
 NSString * const kSettingsRouteProvider = @"routeProvider";
 NSString * const kSettingsAutoStartLastLocation = @"autoStartLastLocation";
+NSString * const kSettingsAltitude = @"altitude";
+NSString * const kSettingsAltitudeEnabled = @"altitudeEnabled";
 
 // Section indices
 typedef NS_ENUM(NSInteger, SettingsSection) {
@@ -31,6 +33,7 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
     SettingsSectionSpeed,
     SettingsSectionDrift,
     SettingsSectionAccuracy,
+    SettingsSectionAltitude,
     SettingsSectionBackground,
     SettingsSectionFailsafe,
     SettingsSectionUI,
@@ -78,6 +81,11 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
 @property (nonatomic, strong) UISegmentedControl *modeSegment;
 @property (nonatomic, strong) UISwitch *autoStartSwitch;
 
+// Altitude
+@property (nonatomic, strong) UISwitch *altitudeSwitch;
+@property (nonatomic, strong) UISlider *altitudeSlider;
+@property (nonatomic, strong) UILabel *altitudeLabel;
+
 @end
 
 @implementation SettingsViewController
@@ -105,7 +113,9 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
         kSettingsVerificationEnabled: @YES,
         kSettingsHapticFeedback: @YES,
         kSettingsRouteProvider: @"osrm",
-        kSettingsAutoStartLastLocation: @NO
+        kSettingsAutoStartLastLocation: @NO,
+        kSettingsAltitude: @0.0,
+        kSettingsAltitudeEnabled: @NO
     }];
 }
 
@@ -189,6 +199,16 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
     return [[self defaults] boolForKey:kSettingsAutoStartLastLocation];
 }
 
++ (double)altitude {
+    [self registerDefaults];
+    return [[self defaults] doubleForKey:kSettingsAltitude];
+}
+
++ (BOOL)altitudeEnabled {
+    [self registerDefaults];
+    return [[self defaults] boolForKey:kSettingsAltitudeEnabled];
+}
+
 + (void)resetToDefaults {
     NSUserDefaults *defaults = [self defaults];
     NSArray *keys = @[
@@ -198,7 +218,8 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
         kSettingsBackgroundEnabled, kSettingsJetsamProtection,
         kSettingsFailsafeEnabled, kSettingsFailsafeThreshold,
         kSettingsVerificationEnabled, kSettingsHapticFeedback,
-        kSettingsRouteProvider, kSettingsAutoStartLastLocation
+        kSettingsRouteProvider, kSettingsAutoStartLastLocation,
+        kSettingsAltitude, kSettingsAltitudeEnabled
     ];
     
     for (NSString *key in keys) {
@@ -334,6 +355,20 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
     self.autoStartSwitch = [[UISwitch alloc] init];
     self.autoStartSwitch.on = [[self class] autoStartLastLocation];
     [self.autoStartSwitch addTarget:self action:@selector(autoStartSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    // Altitude
+    self.altitudeSwitch = [[UISwitch alloc] init];
+    self.altitudeSwitch.on = [[self class] altitudeEnabled];
+    [self.altitudeSwitch addTarget:self action:@selector(altitudeSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.altitudeSlider = [[UISlider alloc] init];
+    self.altitudeSlider.minimumValue = -100.0;
+    self.altitudeSlider.maximumValue = 5000.0;
+    self.altitudeSlider.value = [[self class] altitude];
+    [self.altitudeSlider addTarget:self action:@selector(altitudeChanged:) forControlEvents:UIControlEventValueChanged];
+    
+    self.altitudeLabel = [[UILabel alloc] init];
+    [self updateAltitudeLabel];
 }
 
 #pragma mark - Actions
@@ -428,6 +463,16 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
     [[NSUserDefaults standardUserDefaults] setBool:sw.on forKey:kSettingsAutoStartLastLocation];
 }
 
+- (void)altitudeSwitchChanged:(UISwitch *)sw {
+    [[NSUserDefaults standardUserDefaults] setBool:sw.on forKey:kSettingsAltitudeEnabled];
+    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:SettingsSectionAltitude] withRowAnimation:UITableViewRowAnimationAutomatic];
+}
+
+- (void)altitudeChanged:(UISlider *)slider {
+    [[NSUserDefaults standardUserDefaults] setDouble:slider.value forKey:kSettingsAltitude];
+    [self updateAltitudeLabel];
+}
+
 #pragma mark - Label Updates
 
 - (void)updateWalkingSpeedLabel {
@@ -474,6 +519,16 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
     self.failsafeThresholdLabel.textColor = [UIColor secondaryLabelColor];
 }
 
+- (void)updateAltitudeLabel {
+    double alt = self.altitudeSlider.value;
+    if (alt >= 0) {
+        self.altitudeLabel.text = [NSString stringWithFormat:@"%.0f m (%.0f ft)", alt, alt * 3.281];
+    } else {
+        self.altitudeLabel.text = [NSString stringWithFormat:@"%.0f m (below sea)", alt];
+    }
+    self.altitudeLabel.textColor = [UIColor secondaryLabelColor];
+}
+
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -486,6 +541,7 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
         case SettingsSectionSpeed: return 2;
         case SettingsSectionDrift: return 2;
         case SettingsSectionAccuracy: return 3;
+        case SettingsSectionAltitude: return self.altitudeSwitch.on ? 2 : 1;
         case SettingsSectionBackground: return 2;
         case SettingsSectionFailsafe: return self.failsafeSwitch.on ? 2 : 1;
         case SettingsSectionUI: return 2;
@@ -501,6 +557,7 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
         case SettingsSectionSpeed: return @"Speed Settings";
         case SettingsSectionDrift: return @"Drift Settings";
         case SettingsSectionAccuracy: return @"Accuracy Simulation";
+        case SettingsSectionAltitude: return @"Altitude";
         case SettingsSectionBackground: return @"Background & Persistence";
         case SettingsSectionFailsafe: return @"Rubber-Band Failsafe";
         case SettingsSectionUI: return @"User Interface";
@@ -517,9 +574,11 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
         case SettingsSectionSpeed:
             return @"Walking: typical human pace. Driving: car speeds for route mode.";
         case SettingsSectionDrift:
-            return @"Random drift range applied to position. Simulates real GPS behavior.";
+            return @"Random drift range (in meters) applied in RANDOM directions to simulate real GPS jitter.";
         case SettingsSectionAccuracy:
             return @"Accuracy circle changes randomly every interval to mimic real iPhone GPS.";
+        case SettingsSectionAltitude:
+            return @"Set custom altitude. Useful for buildings, mountains, or underground locations.";
         case SettingsSectionBackground:
             return @"Keep spoofing active when app is closed. Jetsam protection prevents iOS from killing the process.";
         case SettingsSectionFailsafe:
@@ -582,6 +641,18 @@ typedef NS_ENUM(NSInteger, SettingsSection) {
             } else {
                 cell.textLabel.text = @"Update Interval";
                 UIStackView *stack = [self sliderStackWithSlider:self.accuracyIntervalSlider label:self.accuracyIntervalLabel];
+                cell.accessoryView = stack;
+            }
+            break;
+        }
+            
+        case SettingsSectionAltitude: {
+            if (indexPath.row == 0) {
+                cell.textLabel.text = @"Custom Altitude";
+                cell.accessoryView = self.altitudeSwitch;
+            } else {
+                cell.textLabel.text = @"Altitude";
+                UIStackView *stack = [self sliderStackWithSlider:self.altitudeSlider label:self.altitudeLabel];
                 cell.accessoryView = stack;
             }
             break;
