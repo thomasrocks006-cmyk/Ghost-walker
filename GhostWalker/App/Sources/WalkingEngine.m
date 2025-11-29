@@ -3,11 +3,14 @@
 //  Ghost Walker
 //
 //  Core location simulation with static hold, walking, driving modes
+//  Uses CLSimulationManager (via LocationSimulator) for native location spoofing
 //  Features: background persistence, rubber-band failsafe, configurable accuracy
 //
 
 #import "WalkingEngine.h"
+#import "LocationSimulator.h"
 
+// Legacy JSON paths for backwards compatibility with tweak
 static NSString *const kJSONPath = @"/var/mobile/Library/Preferences/com.ghostwalker.live.json";
 static NSString *const kPersistPath = @"/var/mobile/Library/Preferences/com.ghostwalker.persist.json";
 
@@ -657,9 +660,33 @@ static NSString *const kPersistPath = @"/var/mobile/Library/Preferences/com.ghos
     [task resume];
 }
 
-#pragma mark - JSON File Operations
+#pragma mark - JSON File Operations (Now uses CLSimulationManager!)
 
 - (void)writeLocationToJSON:(double)lat lon:(double)lon alt:(double)alt accuracy:(double)accuracy course:(double)course speed:(double)speed {
+    
+    // PRIMARY: Use CLSimulationManager via LocationSimulator
+    LocationSimulator *sim = [LocationSimulator sharedSimulator];
+    CLLocationCoordinate2D location = CLLocationCoordinate2DMake(lat, lon);
+    
+    if (!sim.isSimulating) {
+        // Start simulation with current settings
+        sim.accuracyMin = self.accuracyMin;
+        sim.accuracyMax = self.accuracyMax;
+        sim.driftMin = self.driftMin;
+        sim.driftMax = self.driftMax;
+        sim.updateInterval = self.updateInterval;
+        
+        [sim startSimulatingLocation:location accuracy:accuracy speed:speed course:course];
+    } else {
+        // Update existing simulation - let LocationSimulator handle drift
+        // We pass the base location, it applies drift internally
+        [sim setBaseLocation:location];
+        sim.currentSpeed = speed;
+        sim.currentCourse = course;
+    }
+    
+    // LEGACY: Also write JSON for backwards compatibility with tweak
+    // (in case someone has older tweak version)
     NSDictionary *locationData = @{
         @"lat": @(lat),
         @"lon": @(lon),
@@ -688,6 +715,10 @@ static NSString *const kPersistPath = @"/var/mobile/Library/Preferences/com.ghos
 }
 
 - (void)clearJSONFile {
+    // Stop CLSimulationManager
+    [[LocationSimulator sharedSimulator] stopSimulating];
+    
+    // Also clear legacy JSON
     [[NSFileManager defaultManager] removeItemAtPath:kJSONPath error:nil];
 }
 

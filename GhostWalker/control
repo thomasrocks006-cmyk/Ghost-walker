@@ -1,9 +1,9 @@
 Package: com.ghostwalker.app
 Name: Ghost Walker
-Version: 2.1.0
+Version: 3.0.0
 Architecture: iphoneos-arm64
-Description: Advanced location spoofing suite for iOS 15+. v2.1 fixes: Multi-path JSON support for rootless, improved daemon injection, Executables filter for locationd.
+Description: Advanced location spoofing suite for iOS 15+. v3.0 uses Apple CLSimulationManager API (same as locsim) - NO tweak injection needed! Accuracy drift, route walking/driving, persistent spoofing.
 Maintainer: Ghost Walker Dev
 Author: Ghost Walker Dev
 Section: Tweaks
-Depends: firmware (>= 15.0), mobilesubstrate
+Depends: firmware (>= 15.0)

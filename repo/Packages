@@ -1,16 +1,14 @@
 Package: com.ghostwalker.app
-Version: 2.1.0
+Version: 3.0.0
 Architecture: iphoneos-arm64
 Maintainer: Ghost Walker Dev
-Installed-Size: 240
-Depends: firmware (>= 15.0), mobilesubstrate
-Filename: debs/com.ghostwalker.app_2.1.0_iphoneos-arm64.deb
-Size: 47672
-MD5sum: 5545eaa84ae5816aecf11e4f462c1dc6
-SHA1: d896556d243f54f353f6c6053cc0550be284209a
-SHA256: 1ced9e4e0d762d207a7316875f6cea16792d71722a184996a036335e80692c7a
+Installed-Size: 280
+Depends: firmware (>= 15.0)
+Filename: debs/com.ghostwalker.app_3.0.0_iphoneos-arm64.deb
+Size: 51840
+MD5sum: e9273eb5490f6ee330362f5c9e1c0869
 Section: Tweaks
-Description: v2.1 Fix - Multi-path JSON support for rootless jailbreaks, improved locationd injection with Executables filter, enhanced logging.
+Description: v3.0 MAJOR UPDATE - Uses Apple CLSimulationManager API (same as locsim/Geranium) for reliable location spoofing. No tweak injection needed! Features accuracy drift, route walking/driving, persistent spoofing.
 Author: Ghost Walker Dev
 Name: Ghost Walker
 
