@@ -58,7 +58,7 @@ A complete location spoofing solution featuring a UIKit dashboard app and system
 
 ### Method 2: Direct .deb Install
 
-1. Download `com.ghostwalker.app_2.0.0_iphoneos-arm64.deb` from the `repo/debs/` folder
+1. Download `com.ghostwalker.app_3.0.1_iphoneos-arm64.deb` from the `repo/debs/` folder
 2. Transfer to your iPhone using AirDrop, iCloud, or SSH
 3. Open with **Filza File Manager**
 4. Tap the `.deb` file and select **Install**
@@ -147,20 +147,28 @@ GhostWalker/
 
 ## 🔧 How It Works
 
-### IPC (Inter-Process Communication)
-The app writes the spoofed location to a JSON file:
-\`\`\`
-/var/mobile/Library/Preferences/com.ghostwalker.live.json
-\`\`\`
+### v3.0 Architecture (CLSimulationManager)
 
-The tweak reads this file and returns the spoofed coordinates when apps request location data.
+Ghost Walker v3.0 uses Apple's native **CLSimulationManager** API to simulate location. This is the same method used by Apple's own development tools, LocSim, and Geranium.
 
-### Hooked Methods
-- \`CLLocationManager.location\`
-- \`CLLocationManager.startUpdatingLocation\`
-- \`CLLocation.coordinate\`
-- \`CLLocation.altitude\`
-- \`CLLocation.horizontalAccuracy\`
+**How it works:**
+1. The app creates a `CLSimulationManager` instance
+2. Location coordinates are pushed via XPC to `locationd`
+3. ALL apps system-wide receive the simulated location
+4. No tweak injection required for core functionality!
+
+### Fallback Methods
+
+If CLSimulationManager is unavailable:
+- Falls back to `locsim` CLI if installed
+- The included tweak can provide additional hooks if needed
+
+### Persistence
+
+For background survival, a secondary JSON file mechanism is still supported:
+\`\`\`
+/var/mobile/Library/Preferences/com.ghostwalker.persist.json
+\`\`\`
 
 ---
 

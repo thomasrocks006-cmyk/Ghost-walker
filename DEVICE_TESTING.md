@@ -23,8 +23,8 @@ Complete instructions for an agent with root SSH access to test, diagnose, and f
 | Property | Value |
 |----------|-------|
 | Package ID | `com.ghostwalker.app` |
-| Version | 2.0.0 |
-| .deb File | `com.ghostwalker.app_2.0.0_iphoneos-arm64.deb` |
+| Version | 3.0.1 |
+| .deb File | `com.ghostwalker.app_3.0.1_iphoneos-arm64.deb` |
 | Repo URL | `https://raw.githubusercontent.com/thomasrocks006-cmyk/Ghost-walker/main/repo/` |
 
 ---
@@ -137,7 +137,7 @@ Run these commands via SSH or NewTerm to diagnose the issue:
 dpkg -l | grep ghost
 
 # Expected output:
-# ii  com.ghostwalker.app  2.0.0  iphoneos-arm64  Ghost Walker
+# ii  com.ghostwalker.app  3.0.1  iphoneos-arm64  Ghost Walker
 ```
 
 ## Step 2: Check App Bundle Location
@@ -389,7 +389,7 @@ echo "Test complete - location should return to real"
 
 | Check | Expected Result |
 |-------|-----------------|
-| `dpkg -l \| grep ghost` | `ii  com.ghostwalker.app  2.0.0  iphoneos-arm64` |
+| `dpkg -l \| grep ghost` | `ii  com.ghostwalker.app  3.0.1  iphoneos-arm64` |
 | `ls /var/jb/Applications/GhostWalker.app/` | `GhostWalker  Info.plist  ...` |
 | `ls /var/jb/Library/MobileSubstrate/DynamicLibraries/GhostWalker.*` | `.dylib` and `.plist` files |
 | `file .../GhostWalker` | `Mach-O 64-bit executable arm64` |
@@ -406,7 +406,7 @@ If Sileo repo isn't working, install manually:
 ```bash
 # Download .deb directly
 cd /var/mobile/Documents/
-curl -L -o ghostwalker.deb "https://github.com/thomasrocks006-cmyk/Ghost-walker/raw/main/repo/debs/com.ghostwalker.app_2.0.0_iphoneos-arm64.deb"
+curl -L -o ghostwalker.deb "https://github.com/thomasrocks006-cmyk/Ghost-walker/raw/main/repo/debs/com.ghostwalker.app_3.0.1_iphoneos-arm64.deb"
 
 # Install
 dpkg -i ghostwalker.deb
@@ -456,4 +456,4 @@ After running diagnostics, report back with:
 ---
 
 *Document created: November 28, 2025*
-*For Ghost Walker v2.0.0 on Dopamine Rootless*
+*For Ghost Walker v3.0.1 on Dopamine Rootless*

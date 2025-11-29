@@ -5,31 +5,25 @@ This contains the COMPLETE source code for Ghost Walker. The agent can use this 
 
 ---
 
-# 🚨 CURRENT ISSUE: Map Not Loading
+# ✅ ISSUE FIXED: Map Not Loading
 
-## Problem
-The map is blank because it's waiting for `CLLocationManager` to provide a location update before centering. If the location manager never fires (due to permission issues, our own tweak interfering, or iOS quirks), the map stays at (0,0) - middle of the ocean.
+## Problem (v2.x)
+The map was blank because it was waiting for `CLLocationManager` to provide a location update before centering. If the location manager never fired, the map stayed at (0,0).
 
-## Root Cause
-In `MainViewController.m`, the map only centers when `didUpdateLocations:` is called:
+## Solution (v3.0.1)
+Added a 3-second fallback in `viewDidAppear:` that centers the map on San Francisco if no GPS update arrives.
 
 ```objc
-- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
-    CLLocation *location = locations.lastObject;
-    if (!location) return;
-    
+// In MainViewController.m viewDidAppear:
+dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
     if (!self.hasInitializedMap) {
-        MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(location.coordinate, 1000, 1000);
+        CLLocationCoordinate2D defaultLocation = CLLocationCoordinate2DMake(37.7749, -122.4194);
+        MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(defaultLocation, 5000, 5000);
         [self.mapView setRegion:region animated:YES];
-        self.hasInitializedMap = YES;  // <-- Only set when we get a location
+        self.hasInitializedMap = YES;
     }
-}
+});
 ```
-
-If this delegate method never fires, `hasInitializedMap` stays `NO` and the map never centers.
-
-## The Fix
-Add a fallback that centers the map on a default US location after 3 seconds if no GPS update arrives.
 
 ---
 
